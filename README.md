@@ -1,6 +1,6 @@
 # tms
 
-Toyota loom monitoring system (TMS). This repository holds the legacy system (for reference) and the documentation for migrating it to Python + PostgreSQL.
+Toyota loom monitoring system (TMS). This repository holds the legacy system (for reference) and the Python rewrite (in progress).
 
 ## Documentação
 
@@ -15,6 +15,27 @@ Toyota loom monitoring system (TMS). This repository holds the legacy system (fo
 
 ## Conteúdo
 
-- `docs/legado/htdocs/tms` — código legado (CGI Perl) do sistema de monitoramento de teares
-- `docs/legado/htdocs/tmsdata` — dados de exemplo no formato de arquivos planos
-- `docs/legado/htdocs/{wnet,jat,lwt,tdm,tdmdata,...}` — subsistemas auxiliares
+- `src/tms/` — reescrita em Python (FastAPI + SQLAlchemy + Alembic, PostgreSQL)
+- `alembic/` — migrações do banco
+- `tests/` — testes (fórmulas e mapeamentos de parada)
+- `docs/legado/` — código legado (não versionado; só referência local)
+
+## Como rodar (Fase 0)
+
+```bash
+# 1. criar banco (uma vez)
+psql -U postgres -c "CREATE ROLE tms LOGIN PASSWORD 'tms';"
+psql -U postgres -c "CREATE DATABASE tms OWNER tms;"
+
+export TMS_DATABASE_URL=postgresql+psycopg://tms:tms@localhost:5432/tms
+
+# 2. migrar e rodar
+pip install -e ".[dev]"
+alembic upgrade head
+PYTHONPATH=src uvicorn tms.app.main:app --reload
+
+# 3. testar
+pytest
+```
+
+API: `GET /api/health` · OpenAPI: `/docs`

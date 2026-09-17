@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tms"
+version = "0.1.0"
+description = "Toyota Loom Monitoring System — Python rewrite (legacy: docs/legado)"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.141",
+    "uvicorn[standard]>=0.53",
+    "sqlalchemy>=2.0",
+    "alembic>=1.20",
+    "pydantic>=2.13",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.1",
+    "httpx>=0.24",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
