@@ -26,9 +26,11 @@ def _print_stats(stats: IngestStats, title: str) -> None:
     print(title)
     print(f"  arquivos lidos        : {stats.files}")
     print(f"  maquinas (unicas)     : {stats.machines}")
+    print(f"  operadores (novos)    : {stats.operators}")
     print(f"  machine_snapshots     : {stats.snapshots}")
     print(f"  shift_schedules       : {stats.shift_schedules}")
     print(f"  daily_raw             : {stats.daily_raw}")
+    print(f"  operator_daily        : {stats.operator_daily}")
     print(f"  agg_shift             : {stats.agg_shift}")
     print(f"  stop_events           : {stats.stop_events}")
 

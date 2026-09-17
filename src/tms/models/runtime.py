@@ -80,6 +80,25 @@ class DailyRaw(Base):
     collected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class OperatorDaily(Base):
+    """Registro bruto por tear/operador/dia (operator/<YYYY.MM.DD>.txt)."""
+
+    __tablename__ = "operator_daily"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    machine_id: Mapped[int] = mapped_column(ForeignKey("machines.id"), index=True)
+    operator_id: Mapped[int] = mapped_column(ForeignKey("operators.id"), index=True)
+    day: Mapped[str] = mapped_column(String(10), index=True)
+    start_time: Mapped[datetime | None] = mapped_column(DateTime)
+    seisan: Mapped[dict | None] = mapped_column(JSON)  # seisan(4)
+    run_tm: Mapped[int | None] = mapped_column(Integer)  # segundos
+    stop_ttm: Mapped[int | None] = mapped_column(Integer)  # segundos
+    s_ct: Mapped[list | None] = mapped_column(JSON)
+    s_tm: Mapped[list | None] = mapped_column(JSON)
+    raw_line: Mapped[str | None] = mapped_column(Text)
+    collected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class AggShift(Base):
     """Linha agregada por turno (shift-shift/<shift>.txt).
 

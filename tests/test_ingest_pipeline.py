@@ -9,8 +9,14 @@ import tms.models  # noqa: F401  (registra as tabelas no metadata)
 from tms.db.base import Base
 from tms.ingest import pipeline
 from tms.ingest.shift_file import ShiftRecord
-from tms.models.masters import Machine, ShiftSchedule
-from tms.models.runtime import AggShift, DailyRaw, MachineSnapshot, StopEvent
+from tms.models.masters import Machine, Operator, ShiftSchedule
+from tms.models.runtime import (
+    AggShift,
+    DailyRaw,
+    MachineSnapshot,
+    OperatorDaily,
+    StopEvent,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -172,6 +178,56 @@ def test_ingest_stophistory_replaces_day(db):
     db.commit()
     assert again.stop_events == 4
     assert db.query(StopEvent).count() == 4
+
+
+def test_ingest_operator_creates_operator_and_daily(db):
+    stats = pipeline.ingest_operator(db, _text("operator_2025.10.01.txt"))
+    db.commit()
+    assert stats.machines == 2
+    assert stats.operators == 1  # ambos ope_num 0
+    assert stats.operator_daily == 2
+
+    operator = db.execute(select(Operator)).scalar_one()
+    assert operator.code == "0"
+    assert operator.name == "A"  # último nome visto
+
+    machine = db.execute(select(Machine).where(Machine.mac_name == "00002")).scalar_one()
+    job = db.execute(
+        select(OperatorDaily).where(OperatorDaily.machine_id == machine.id)
+    ).scalar_one()
+    assert job.day == "2025.10.01"
+    assert job.run_tm == 72090
+    assert job.seisan["seisan"] == [7067, 3156, 3452, 0]
+    assert job.start_time == datetime(2025, 10, 1, 6, 0, 0)
+
+    again = pipeline.ingest_operator(db, _text("operator_2025.10.01.txt"))
+    db.commit()
+    assert again.operator_daily == 0
+    assert again.operators == 0
+    assert db.query(OperatorDaily).count() == 2
+
+
+def test_ingest_loom_creates_snapshot(db):
+    stats = pipeline.ingest_loom(db, _text("loom_00001.txt"))
+    db.commit()
+    assert stats.machines == 1
+    assert stats.snapshots == 1
+
+    machine = db.execute(select(Machine)).scalar_one()
+    assert machine.mac_name == "00001"
+    assert machine.mac_type == "JAT"  # normalizado de JAT710
+
+    snapshot = db.execute(select(MachineSnapshot)).scalar_one()
+    assert snapshot.shift_id == "2026.09.17.1"
+    assert snapshot.get_time == datetime(2026, 9, 17, 13, 58, 9)
+    assert snapshot.sys_time == datetime(2026, 9, 17, 14, 8, 5)
+    assert snapshot.style == "1210"
+    assert snapshot.s_beam == "90000 98416"
+
+    again = pipeline.ingest_loom(db, _text("loom_00001.txt"))
+    db.commit()
+    assert again.snapshots == 0
+    assert db.query(MachineSnapshot).count() == 1
 
 
 def test_ingest_directory(tmp_path, db):

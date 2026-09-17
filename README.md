@@ -49,6 +49,6 @@ upsert idempotente no PostgreSQL. A URL do banco vem de `TMS_DATABASE_URL`.
 # contar o que seria ingerido, sem escrever no banco
 PYTHONPATH=src python -m tms.ingest docs/legado/htdocs/tmsdata --dry-run
 
-# ingerir tudo (ou restringir com --sources current,setting,shift,stophistory)
+# ingerir tudo (ou restringir com --sources current,setting,shift,operator,stophistory,loom)
 PYTHONPATH=src python -m tms.ingest docs/legado/htdocs/tmsdata
 ```

@@ -6,6 +6,7 @@ from tms.models.runtime import (
     AggShift,
     DailyRaw,
     MachineSnapshot,
+    OperatorDaily,
     StopEvent,
 )
 
@@ -16,6 +17,7 @@ __all__ = [
     "Machine",
     "MachineSnapshot",
     "Operator",
+    "OperatorDaily",
     "ReportPref",
     "Setting",
     "ShiftSchedule",

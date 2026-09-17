@@ -27,16 +27,25 @@ def _make_data_dir(tmp_path: Path) -> Path:
     (tmp_path / "stop_history" / "2026.07.01" / "00000001.txt").write_text(
         _text("stop_history_00000001.txt"), encoding="utf-8"
     )
+    (tmp_path / "operator").mkdir()
+    (tmp_path / "operator" / "2025.10.01.txt").write_text(
+        _text("operator_2025.10.01.txt"), encoding="utf-8"
+    )
+    (tmp_path / "loom").mkdir()
+    (tmp_path / "loom" / "172017001001.txt").write_text(
+        _text("loom_00001.txt"), encoding="utf-8"
+    )
     return tmp_path
 
 
 def test_preview_directory(tmp_path):
     stats = preview_directory(_make_data_dir(tmp_path))
-    assert stats.files == 4
-    assert stats.machines == 3
-    assert stats.snapshots == 3
+    assert stats.files == 6
+    assert stats.machines == 4
+    assert stats.snapshots == 4
     assert stats.shift_schedules == 1
     assert stats.daily_raw == 2
+    assert stats.operator_daily == 2
     assert stats.agg_shift == 2
     assert stats.stop_events == 4
 
@@ -67,10 +76,11 @@ def test_cli_ingests_into_sqlite(tmp_path):
     assert code == 0
 
     db = factory()
-    from tms.models.runtime import AggShift, DailyRaw, StopEvent
+    from tms.models.runtime import AggShift, DailyRaw, OperatorDaily, StopEvent
 
     assert db.query(DailyRaw).count() == 2
     assert db.query(AggShift).count() == 2
+    assert db.query(OperatorDaily).count() == 2
     assert db.query(StopEvent).count() == 4
     db.close()
 

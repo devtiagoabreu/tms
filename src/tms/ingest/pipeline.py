@@ -29,10 +29,18 @@ from tms.ingest.current_file import (
     parse_current_file,
     parse_setting_file,
 )
+from tms.ingest.loom_file import parse_loom_file
+from tms.ingest.operator_file import parse_operator_line
 from tms.ingest.shift_file import ShiftRecord, parse_shift_line
 from tms.ingest.stophistory_file import parse_stophistory_file
-from tms.models.masters import Machine, ShiftSchedule
-from tms.models.runtime import AggShift, DailyRaw, MachineSnapshot, StopEvent
+from tms.models.masters import Machine, Operator, ShiftSchedule
+from tms.models.runtime import (
+    AggShift,
+    DailyRaw,
+    MachineSnapshot,
+    OperatorDaily,
+    StopEvent,
+)
 
 _RAW_LEN = {"JAT": 40, "LWT": 31}
 
@@ -55,9 +63,11 @@ class IngestStats:
     """Contadores do que foi ingerido (útil p/ relatório/diagnóstico)."""
 
     machines: int = 0
+    operators: int = 0
     snapshots: int = 0
     shift_schedules: int = 0
     daily_raw: int = 0
+    operator_daily: int = 0
     stop_events: int = 0
     agg_shift: int = 0
     files: int = 0
@@ -396,7 +406,7 @@ def ingest_stophistory(db: Session, text: str) -> IngestStats:
     return stats
 
 
-SOURCES = ("current", "setting", "shift", "stophistory")
+SOURCES = ("current", "setting", "shift", "operator", "stophistory", "loom")
 
 
 def _resolve_sources(sources: Optional[Iterable[str]]) -> set[str]:
@@ -413,6 +423,113 @@ def _resolve_sources(sources: Optional[Iterable[str]]) -> set[str]:
                 raise ValueError(f"fonte desconhecida: {item!r} (use {SOURCES} ou 'all')")
             resolved.add(item)
     return resolved
+
+
+def ensure_operator(db: Session, code: str, name: str = "") -> tuple[Operator, bool]:
+    """Busca/cria `operators` por `code` (ope_num), atualizando o nome."""
+    code = code or "0"
+    operator = db.execute(
+        select(Operator).where(Operator.code == code)
+    ).scalar_one_or_none()
+    if operator is None:
+        operator = Operator(code=code, name=name or code)
+        db.add(operator)
+        db.flush()
+        return operator, True
+    if name and operator.name != name:
+        operator.name = name
+    return operator, False
+
+
+def ingest_operator(db: Session, text: str) -> IngestStats:
+    """`operator/<data>.txt` → operators + operator_daily."""
+    stats = IngestStats()
+    for line in text.splitlines():
+        record = parse_operator_line(line)
+        if record is None or not record.mac_name or not record.day:
+            continue
+        machine, created = ensure_machine(
+            db, record.mac_name, record.mac_type, record.ip_addr
+        )
+        if created:
+            stats.machines += 1
+        operator, created_op = ensure_operator(db, record.ope_num, record.ope_name)
+        if created_op:
+            stats.operators += 1
+
+        job = db.execute(
+            select(OperatorDaily).where(
+                OperatorDaily.machine_id == machine.id,
+                OperatorDaily.operator_id == operator.id,
+                OperatorDaily.day == record.day,
+            )
+        ).scalar_one_or_none()
+        values = dict(
+            start_time=record.start,
+            seisan={"seisan": record.seisan},
+            run_tm=record.run_tm_sec,
+            stop_ttm=record.stop_ttm_sec,
+            s_ct=record.s_ct,
+            s_tm=record.s_tm,
+            raw_line=line.strip(),
+        )
+        if job is None:
+            db.add(
+                OperatorDaily(
+                    machine_id=machine.id,
+                    operator_id=operator.id,
+                    day=record.day,
+                    **values,
+                )
+            )
+            stats.operator_daily += 1
+        else:
+            for key, value in values.items():
+                setattr(job, key, value)
+    db.flush()
+    return stats
+
+
+def ingest_loom(db: Session, text: str) -> IngestStats:
+    """`loom/<mac>.txt` → machines + machine_snapshots (secção `current`).
+
+    A secção `stop_history` do loom é dado transitório e já é coberta por
+    `stop_history/<data>/<mac>.txt`, então não é duplicada aqui.
+    """
+    stats = IngestStats()
+    loom = parse_loom_file(text)
+    if not loom.mac_name:
+        return stats
+    machine, created = ensure_machine(db, loom.mac_name, loom.mac_type, loom.ip_addr)
+    if created:
+        stats.machines += 1
+
+    shift_id = ""
+    if loom.get_time and loom.shift:
+        shift_id = f"{loom.get_time:%Y.%m.%d}.{loom.shift}"
+    record = CurrentRecord(
+        mac_name=loom.mac_name,
+        mac_type=loom.mac_type,
+        ip_addr=loom.ip_addr,
+        shift=shift_id,
+        get_time=loom.get_time,
+        sys_time=loom.sys_time,
+        rtc_time=loom.rtc_time,
+        style=loom.style,
+        beam=loom.beam,
+        ubeam=loom.ubeam,
+        s_beam=loom.s_beam,
+        r_beam=loom.r_beam,
+        cloth_len=loom.cloth_len,
+        cut_len=loom.cut_len,
+        doff_fcst=loom.doff_fcst,
+        wout_fcst=loom.wout_fcst,
+        uwout_fcst=loom.uwout_fcst,
+    )
+    if _upsert_snapshot(db, machine, record):
+        stats.snapshots += 1
+    db.flush()
+    return stats
 
 
 def ingest_directory(
@@ -453,6 +570,18 @@ def ingest_directory(
     if "stophistory" in selected and stop_dir.is_dir():
         for path in sorted(stop_dir.glob("*/*.txt")):
             total += ingest_stophistory(db, path.read_text(encoding="utf-8", errors="replace"))
+            total.files += 1
+
+    operator_dir = root / "operator"
+    if "operator" in selected and operator_dir.is_dir():
+        for path in sorted(operator_dir.glob("*.txt")):
+            total += ingest_operator(db, path.read_text(encoding="utf-8", errors="replace"))
+            total.files += 1
+
+    loom_dir = root / "loom"
+    if "loom" in selected and loom_dir.is_dir():
+        for path in sorted(loom_dir.glob("*.txt")):
+            total += ingest_loom(db, path.read_text(encoding="utf-8", errors="replace"))
             total.files += 1
 
     if commit:
@@ -504,6 +633,28 @@ def preview_directory(
                 continue  # ex.: index.txt
             stats.stop_events += len(parsed.events)
             mac_names.add(parsed.mac_name)
+            stats.files += 1
+
+    operator_dir = root / "operator"
+    if "operator" in selected and operator_dir.is_dir():
+        for path in sorted(operator_dir.glob("*.txt")):
+            for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+                record = parse_operator_line(line)
+                if record is None or not record.mac_name or not record.day:
+                    continue
+                stats.operator_daily += 1
+                mac_names.add(record.mac_name)
+            stats.files += 1
+
+    loom_dir = root / "loom"
+    if "loom" in selected and loom_dir.is_dir():
+        for path in sorted(loom_dir.glob("*.txt")):
+            loom = parse_loom_file(path.read_text(encoding="utf-8", errors="replace"))
+            if not loom.mac_name:
+                continue
+            if loom.get_time is not None:
+                stats.snapshots += 1
+            mac_names.add(loom.mac_name)
             stats.files += 1
 
     stats.machines = len(mac_names)
