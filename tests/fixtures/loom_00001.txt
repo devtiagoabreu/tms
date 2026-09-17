@@ -1,0 +1,82 @@
+get_time 2026 9 17 4 13 58 9
+JAT710-TMS-DATA current -----------
+ip_addr 172.17.1.1
+mac_name 00001
+sys_time 2026 9 17 4 14 8 5
+rtc_time 2026 9 17 0 10 8 5
+shift 1
+style 1210
+beam 123219
+ubeam 
+ubeam_use 0
+count_unit meter
+s_beam 90000 98416
+r_beam 68606 75021
+s_ubeam 0 0
+r_ubeam -118374 -129443
+cloth_len 7626 6355 6950 0
+cut_len 0 6000 42 0
+doff_fcst 0
+wout_fcst 18042
+uwout_fcst 0
+#end_of_data
+JAT710-TMS-DATA stop_history -----------
+MH_d0_tm 2026 9 16 3 0 0 0
+MH_d0_h0_history - 05:06:48 0027
+MH_d0_h1_history 05:10:41 05:13:37 0005
+MH_d1_tm 2026 9 17 3 0 0 0
+MH_d1_h0_history 05:00:00 - 0028
+JAT700-MCARD-DATA file_info -----------
+machine        "00001"
+style          "1210"
+beam           "123219"
+top_beam       ""
+#end_of_data
+JAT700-MCARD-DATA moni_monitor -----------
+MJ_current_sb 1210 123219 *
+MJ_t_s0_seisan 2394 2082 2276 0
+MJ_t_s0_rt 28272
+MJ_t_s0_sc 0 0 0 0 1 8 14 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+MJ_t_s0_st 0 0 0 0 1118 1463 1547 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+MJ_t_s0_to 4128
+MJ_t_s0_tm 2026 9 17 1 5 0 0
+MJ_t_s0_sn 1210
+MJ_t_s0_bn_b 123219
+MJ_t_s0_bn_t 
+MJ_t_s0_bt_use 0
+MJ_t_s1_seisan 0 0 0 0
+MJ_t_s1_rt 0
+MJ_t_s1_sc 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+MJ_t_s1_st 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+MJ_t_s1_to 0
+MJ_t_s1_tm 2026 9 17 3 0 0 0
+PM_t_p5_seisan 2160 939 1027 0
+PM_t_p5_rt 23188
+PM_t_p5_sc 2 0 0 0 0 1 9 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+PM_t_p5_st 280 0 0 0 0 187 6345 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+PM_t_p5_to 6812
+PM_t_p5_ss0 95
+PM_t_p5_ss1 94
+PM_t_p5_ss2 93
+PM_t_p5_en0 90
+PM_t_p5_en1 0
+PM_t_p5_en2 0
+PM_t_p5_op 0
+PM_t_p5_sn 1210
+PM_t_p5_bn_b 123219
+PM_t_p5_bt_use 0
+PM_i_now_p 5
+PM_i_ctime 2026 9 17 1 5 0 0
+PM_i_ptime 2026 9 17 1 4 0 0
+PM_i_change 360
+PM_i_who 5
+JAT700-MCARD-DATA shift -----------
+SHIFT_MODE                0
+SIMPLE                    3  05:00  14:00  23:35  -1:-1  -1:-1
+DAY 0                     3  06:14  14:22  22:06  -1:-1  -1:-1
+DAY 1                     3  05:14  14:22  22:06  -1:-1  -1:-1
+DAY 6                     3  06:14  14:22  22:06  -1:-1  -1:-1
+NAME 0                    ""
+NAME 1                    "Anderson"
+DAY_START_TIME            6:0
+#end_of_data

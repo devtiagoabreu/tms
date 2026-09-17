@@ -1,0 +1,1 @@
+ ,mac_name 00001,mac_type JAT,ip_addr 172.17.1.1,get_time 2026 9 17 4 13 58 9,sys_time 2026 9 17 4 14 8 5,rtc_time 2026 9 17 0 10 8 5,SHIFT_MODE 0,SIMPLE 3 05:00 14:00 23:35 -1:-1 -1:-1,DAY_0 3 06:14 14:22 22:06 -1:-1 -1:-1,DAY_1 3 05:14 14:22 22:06 -1:-1 -1:-1,NAME_0 Undefined1,NAME_1 Anderson,DAY_START_TIME 6:0
