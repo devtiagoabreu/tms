@@ -68,6 +68,8 @@ Somente leitura, paginada (`limit` ≤ 1000, `offset`) e filtrável por tear/dia
 | `GET /api/stop-events` | `mac_name`, `day`, `shift_id`, `raw_code`, `day_from`, `day_to` |
 | `GET /api/operator-daily` | `mac_name`, `operator_code`, `day`, `day_from`, `day_to` |
 | `GET /api/reports/{day\|week\|month}` | `key`, `mac_name`, `day_from`, `day_to`, `week_start`, `min_run_tm`, `min_effic`, `unit`, `beam_type` |
+| `GET /api/monitor` | `offline_after_s`, `lang` — estado atual por tear |
+| `GET /monitor` | dashboard HTML que consome `/api/monitor` (auto-refresh 30s) |
 
 Datas no formato legado `YYYY.MM.DD` (ex.: `2025.10.01`). OpenAPI em `/docs`.
 
@@ -92,3 +94,18 @@ PYTHONPATH=src python -m tms.maintenance rebuild-agg --from 2025.01.01 --to 2025
 `purge` exige ao menos `--from` ou `--to` (nunca apaga tudo por acidente).
 `rebuild-agg` reaproveita o `raw_line` guardado, então novos mapeamentos de
 parada entram em vigor sem reingerir arquivos.
+
+## Monitoramento (Fase 2)
+
+Dashboard em `/monitor` (cards coloridos, refresh 30s) alimentado por
+`GET /api/monitor`. O estado de cada tear é inferido de:
+
+- frescura do último snapshot (`get_time`) → `offline` (default 15 min);
+- parada em aberto no `stop_history` (última parada sem `run_time`) → `stopped`
+  (com código/causa e duração);
+- caso contrário → `run`; sem snapshot → `no_data`.
+
+Os **bits ao vivo** do tear (`Stop`/`Warp`/`Weft`… de `loom/apistate.cgi`) ainda
+não são coletados; quando a coleta em tempo real for migrada, use
+`core.state.state_from_bits` (mesma precedência do legado) para enriquecer o
+estado. Production/efficiency/RPM vêm do último `agg_shift` do tear.

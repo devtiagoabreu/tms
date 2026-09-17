@@ -31,6 +31,7 @@ def client():
     pipeline.ingest_current(session, _text("current.txt"))
     pipeline.ingest_shift(session, _text("shift_2025.10.01.0.txt"), "2025.10.01.0")
     pipeline.ingest_stophistory(session, _text("stop_history_00000001.txt"))
+    pipeline.ingest_stophistory(session, _text("stop_history_open_00000002.txt"))
     pipeline.ingest_operator(session, _text("operator_2025.10.01.txt"))
     pipeline.ingest_loom(session, _text("loom_00001.txt"))
     session.commit()
@@ -135,3 +136,20 @@ def test_report_month(client):
 
 def test_report_invalid_period(client):
     assert client.get("/api/reports/hour").status_code == 404
+
+
+def test_monitor_api(client):
+    response = client.get("/api/monitor", params={"offline_after_s": 10**9})
+    assert response.status_code == 200
+    items = {m["mac_name"]: m for m in response.json()}
+    assert items["00002"]["state"] == "stopped"
+    assert items["00002"]["stop"]["raw_code"] == "0004"
+    assert items["00001"]["state"] == "run"
+    assert items["00005"]["state"] == "no_data"
+
+
+def test_monitor_page(client):
+    response = client.get("/monitor")
+    assert response.status_code == 200
+    assert "TMS - Monitor" in response.text
+    assert "/api/monitor" in response.text

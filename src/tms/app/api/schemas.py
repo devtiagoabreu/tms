@@ -97,6 +97,31 @@ class StopEventOut(_Base):
     duration_min: Optional[float] = None
 
 
+class OpenStopOut(_Base):
+    raw_code: str
+    cause: str
+    started_at: Optional[datetime] = None
+    duration_min: Optional[float] = None
+
+
+class MonitorItemOut(_Base):
+    mac_name: str
+    mac_type: str
+    active: bool
+    state: str
+    state_label: str
+    color: str
+    last_seen: Optional[datetime] = None
+    age_min: Optional[float] = None
+    shift_id: Optional[str] = None
+    style: Optional[str] = None
+    beam: Optional[str] = None
+    production: Optional[float] = None
+    efficiency: Optional[float] = None
+    rpm: Optional[float] = None
+    stop: Optional[OpenStopOut] = None
+
+
 class PeriodRowOut(_Base):
     period: str
     key: str
