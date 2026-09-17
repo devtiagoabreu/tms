@@ -52,3 +52,20 @@ PYTHONPATH=src python -m tms.ingest docs/legado/htdocs/tmsdata --dry-run
 # ingerir tudo (ou restringir com --sources current,setting,shift,operator,stophistory,loom)
 PYTHONPATH=src python -m tms.ingest docs/legado/htdocs/tmsdata
 ```
+
+## API de leitura (Fase 1)
+
+Somente leitura, paginada (`limit` ≤ 1000, `offset`) e filtrável por tear/dia/turno.
+
+| Endpoint | Filtros principais |
+| --- | --- |
+| `GET /api/machines` | — |
+| `GET /api/machines/{mac_name}` | — |
+| `GET /api/machines/{mac_name}/snapshot` | último snapshot do tear |
+| `GET /api/snapshots` | `mac_name`, `shift_id`, `day_from`, `day_to` |
+| `GET /api/daily-raw` | `mac_name`, `day`, `shift_id`, `day_from`, `day_to` |
+| `GET /api/agg-shift` | `mac_name`, `shift_id`, `day_from`, `day_to` |
+| `GET /api/stop-events` | `mac_name`, `day`, `shift_id`, `raw_code`, `day_from`, `day_to` |
+| `GET /api/operator-daily` | `mac_name`, `operator_code`, `day`, `day_from`, `day_to` |
+
+Datas no formato legado `YYYY.MM.DD` (ex.: `2025.10.01`). OpenAPI em `/docs`.
