@@ -75,3 +75,20 @@ Relatórios agregam `daily_raw` por `(mac_name, mac_type, style, beam, ubeam)` �
 **soma** contadores/tempos e **recomputa** EFFIC/RPM/total (nunca média de
 taxas), como `TMSDATAfinal.pm`. A semana usa início configurável
 (`week_start`, 0=domingo), não ISO.
+
+## Retenção e reprocessamento (Fase 1)
+
+```bash
+# contar (sem apagar) o que sairia da retenção até 2024.12.31
+PYTHONPATH=src python -m tms.maintenance purge --to 2024.12.31 --dry-run
+
+# apagar stop_events/daily_raw de um período
+PYTHONPATH=src python -m tms.maintenance purge --to 2024.12.31 --sources stop_events,daily_raw
+
+# recalcular agg_shift a partir de daily_raw (após mudar stopcodes/fórmulas)
+PYTHONPATH=src python -m tms.maintenance rebuild-agg --from 2025.01.01 --to 2025.12.31
+```
+
+`purge` exige ao menos `--from` ou `--to` (nunca apaga tudo por acidente).
+`rebuild-agg` reaproveita o `raw_line` guardado, então novos mapeamentos de
+parada entram em vigor sem reingerir arquivos.

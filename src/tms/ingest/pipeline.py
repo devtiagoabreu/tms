@@ -344,6 +344,50 @@ def ingest_shift(db: Session, text: str, shift_id: Optional[str] = None) -> Inge
     return stats
 
 
+def rebuild_agg(
+    db: Session,
+    *,
+    day_from: Optional[str] = None,
+    day_to: Optional[str] = None,
+    mac_name: Optional[str] = None,
+) -> IngestStats:
+    """Recalcula `agg_shift` a partir de `daily_raw` (apaga/devolve o período).
+
+    Reaproveita o `raw_line` de cada `daily_raw`, então mudanças no mapeamento de
+    categorias (`core.stopcodes`) se refletem sem reingerir os arquivos.
+    """
+    stats = IngestStats()
+    stmt = select(DailyRaw, Machine.mac_name).join(Machine, Machine.id == DailyRaw.machine_id)
+    if mac_name:
+        stmt = stmt.where(Machine.mac_name == mac_name)
+    if day_from:
+        stmt = stmt.where(DailyRaw.day >= day_from)
+    if day_to:
+        stmt = stmt.where(DailyRaw.day <= day_to)
+    rows = list(db.execute(stmt))
+
+    del_stmt = delete(AggShift)
+    if day_from:
+        del_stmt = del_stmt.where(AggShift.shift_id >= day_from)
+    if day_to:
+        del_stmt = del_stmt.where(AggShift.shift_id <= f"{day_to}.9")
+    if mac_name:
+        del_stmt = del_stmt.where(
+            AggShift.machine_id.in_(select(Machine.id).where(Machine.mac_name == mac_name))
+        )
+    db.execute(del_stmt)
+
+    for row, _mac in rows:
+        rec = parse_shift_line(row.raw_line) if row.raw_line else None
+        sid = row.shift_id or (rec.shift if rec else None)
+        if rec is None or not sid:
+            continue
+        _upsert_agg(db, rec, sid, row.machine_id)
+        stats.agg_shift += 1
+    db.flush()
+    return stats
+
+
 def ingest_stophistory(db: Session, text: str) -> IngestStats:
     """`stop_history/<data>/<mac>.txt` → stop_events (substitui o dia)."""
     stats = IngestStats()
