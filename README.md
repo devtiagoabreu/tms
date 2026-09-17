@@ -67,5 +67,11 @@ Somente leitura, paginada (`limit` ≤ 1000, `offset`) e filtrável por tear/dia
 | `GET /api/agg-shift` | `mac_name`, `shift_id`, `day_from`, `day_to` |
 | `GET /api/stop-events` | `mac_name`, `day`, `shift_id`, `raw_code`, `day_from`, `day_to` |
 | `GET /api/operator-daily` | `mac_name`, `operator_code`, `day`, `day_from`, `day_to` |
+| `GET /api/reports/{day\|week\|month}` | `key`, `mac_name`, `day_from`, `day_to`, `week_start`, `min_run_tm`, `min_effic`, `unit`, `beam_type` |
 
 Datas no formato legado `YYYY.MM.DD` (ex.: `2025.10.01`). OpenAPI em `/docs`.
+
+Relatórios agregam `daily_raw` por `(mac_name, mac_type, style, beam, ubeam)` —
+**soma** contadores/tempos e **recomputa** EFFIC/RPM/total (nunca média de
+taxas), como `TMSDATAfinal.pm`. A semana usa início configurável
+(`week_start`, 0=domingo), não ISO.

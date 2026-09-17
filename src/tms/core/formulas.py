@@ -17,10 +17,24 @@ UNIT_NAMES = ("PICK", "METER", "YARD")
 
 
 def rpm(seisan_0: float, run_tm: float) -> float:
-    """RPM = seisan[0]*100 / (run_tm/60). run_tm em minutos agregados."""
+    """RPM a partir de unidades CRUAS: seisan[0] em décimos, run_tm em segundos.
+
+    RPM = seisan[0]*100 / (run_tm/60). Para valores já agregados (seisan /10 e
+    run_tm em minutos) use :func:`rpm_from_agg`.
+    """
     if run_tm <= 0:
         return 0.0
     return seisan_0 * 100.0 / (run_tm / 60.0)
+
+
+def rpm_from_agg(seisan_final_0: float, run_min: float) -> float:
+    """RPM a partir de valores agregados: seisan/10 e run_tm em minutos.
+
+    Equivale a ``rpm(seisan_final_0*10, run_min*60)`` → ``1000*seisan/run_min``.
+    """
+    if run_min <= 0:
+        return 0.0
+    return 1000.0 * seisan_final_0 / run_min
 
 
 def effic(run_tm: float, stop_ttm: float) -> float:

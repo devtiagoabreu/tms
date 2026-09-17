@@ -6,12 +6,14 @@ from fastapi import FastAPI
 
 from tms import __version__
 from tms.app.api.health import router as health_router
+from tms.app.api.reports import router as reports_router
 from tms.app.api.runtime import router as runtime_router
 
 app = FastAPI(title="TMS — Toyota Loom Monitoring System", version=__version__)
 
 app.include_router(health_router)
 app.include_router(runtime_router)
+app.include_router(reports_router)
 
 
 @app.get("/")

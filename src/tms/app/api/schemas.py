@@ -97,6 +97,32 @@ class StopEventOut(_Base):
     duration_min: Optional[float] = None
 
 
+class PeriodRowOut(_Base):
+    period: str
+    key: str
+    mac_name: str
+    mac_type: str
+    style: Optional[str] = None
+    beam: Optional[str] = None
+    ubeam: Optional[str] = None
+    seisan: List[float] = []
+    off_prod: List[float] = []
+    production: float = 0.0
+    run_tm: float = 0.0
+    stop_ttm: float = 0.0
+    effic: float = 0.0
+    rpm: float = 0.0
+    total_ct: int = 0
+    stop_ct: List[int] = []
+    stop_tm: List[float] = []
+    wf1_ct: List[int] = []
+    wf1_tm: List[float] = []
+    wf2_ct: List[int] = []
+    wf2_tm: List[float] = []
+    lh_ct: List[int] = []
+    lh_tm: List[float] = []
+
+
 class OperatorDailyOut(_Base):
     id: int
     machine_id: int

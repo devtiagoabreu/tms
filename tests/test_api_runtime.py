@@ -112,3 +112,26 @@ def test_operator_daily_by_code(client):
     rows = response.json()
     assert len(rows) == 2
     assert {r["mac_name"] for r in rows} == {"00002", "00003"}
+
+
+def test_report_day(client):
+    response = client.get("/api/reports/day", params={"key": "2025.10.01"})
+    assert response.status_code == 200
+    rows = response.json()
+    assert len(rows) == 2
+    assert {r["mac_name"] for r in rows} == {"00001", "00005"}
+    assert rows[0]["period"] == "day"
+    assert rows[0]["stop_ct"] is not None
+    assert rows[0]["production"] >= rows[0]["seisan"][0]
+
+
+def test_report_month(client):
+    response = client.get("/api/reports/month", params={"mac_name": "00001"})
+    assert response.status_code == 200
+    rows = response.json()
+    assert len(rows) == 1
+    assert rows[0]["key"] == "2025.10"
+
+
+def test_report_invalid_period(client):
+    assert client.get("/api/reports/hour").status_code == 404
