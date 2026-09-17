@@ -39,3 +39,16 @@ pytest
 ```
 
 API: `GET /api/health` · OpenAPI: `/docs`
+
+## Ingestão dos dados legados (Fase 1)
+
+Lê um diretório `tmsdata/` (com `current/`, `shift/`, `stop_history/`) e faz
+upsert idempotente no PostgreSQL. A URL do banco vem de `TMS_DATABASE_URL`.
+
+```bash
+# contar o que seria ingerido, sem escrever no banco
+PYTHONPATH=src python -m tms.ingest docs/legado/htdocs/tmsdata --dry-run
+
+# ingerir tudo (ou restringir com --sources current,setting,shift,stophistory)
+PYTHONPATH=src python -m tms.ingest docs/legado/htdocs/tmsdata
+```

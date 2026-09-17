@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, fields
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Iterable, List, Optional
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -396,20 +396,53 @@ def ingest_stophistory(db: Session, text: str) -> IngestStats:
     return stats
 
 
-def ingest_directory(db: Session, root: str | Path) -> IngestStats:
-    """Percorre um `tmsdata/` e ingere todas as fontes suportadas."""
+SOURCES = ("current", "setting", "shift", "stophistory")
+
+
+def _resolve_sources(sources: Optional[Iterable[str]]) -> set[str]:
+    if sources is None:
+        return set(SOURCES)
+    if isinstance(sources, str):
+        sources = [sources]
+    resolved = set()
+    for source in sources:
+        for item in str(source).replace(",", " ").split():
+            if item == "all":
+                return set(SOURCES)
+            if item not in SOURCES:
+                raise ValueError(f"fonte desconhecida: {item!r} (use {SOURCES} ou 'all')")
+            resolved.add(item)
+    return resolved
+
+
+def ingest_directory(
+    db: Session,
+    root: str | Path,
+    *,
+    sources: Optional[Iterable[str]] = None,
+    commit: bool = True,
+) -> IngestStats:
+    """Percorre um `tmsdata/` e ingere as fontes suportadas.
+
+    `sources` restringe a ingestão (subconjunto de `SOURCES`, ou ``"all"``).
+    Com ``commit=False`` nada é persistido (útil para dry-run).
+    """
     root = Path(root)
+    selected = _resolve_sources(sources)
     total = IngestStats()
 
     current = root / "current"
-    for name, fn in (("current.txt", ingest_current), ("setting.txt", ingest_setting)):
+    for name, source, fn in (
+        ("current.txt", "current", ingest_current),
+        ("setting.txt", "setting", ingest_setting),
+    ):
         path = current / name
-        if path.is_file():
+        if source in selected and path.is_file():
             total += fn(db, path.read_text(encoding="utf-8", errors="replace"))
             total.files += 1
 
     shift_dir = root / "shift"
-    if shift_dir.is_dir():
+    if "shift" in selected and shift_dir.is_dir():
         for path in sorted(shift_dir.glob("*.txt")):
             total += ingest_shift(
                 db, path.read_text(encoding="utf-8", errors="replace"), path.stem
@@ -417,10 +450,61 @@ def ingest_directory(db: Session, root: str | Path) -> IngestStats:
             total.files += 1
 
     stop_dir = root / "stop_history"
-    if stop_dir.is_dir():
+    if "stophistory" in selected and stop_dir.is_dir():
         for path in sorted(stop_dir.glob("*/*.txt")):
             total += ingest_stophistory(db, path.read_text(encoding="utf-8", errors="replace"))
             total.files += 1
 
-    db.commit()
+    if commit:
+        db.commit()
     return total
+
+
+def preview_directory(
+    root: str | Path, *, sources: Optional[Iterable[str]] = None
+) -> IngestStats:
+    """Conta o que seria ingerido, sem abrir banco (dry-run puro)."""
+    root = Path(root)
+    selected = _resolve_sources(sources)
+    stats = IngestStats()
+    mac_names: set[str] = set()
+
+    current = root / "current"
+    for name, source in (("current.txt", "current"), ("setting.txt", "setting")):
+        path = current / name
+        if source not in selected or not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        records = parse_current_file(text) if source == "current" else parse_setting_file(text)
+        stats.files += 1
+        stats.snapshots += len(records)
+        if source == "setting":
+            stats.shift_schedules += len(records)
+        mac_names.update(r.mac_name for r in records if r.mac_name)
+
+    shift_dir = root / "shift"
+    if "shift" in selected and shift_dir.is_dir():
+        for path in sorted(shift_dir.glob("*.txt")):
+            for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+                record = parse_shift_line(line)
+                if record is None or not record.mac_name:
+                    continue
+                stats.daily_raw += 1
+                stats.agg_shift += 1
+                mac_names.add(record.mac_name)
+            stats.files += 1
+
+    stop_dir = root / "stop_history"
+    if "stophistory" in selected and stop_dir.is_dir():
+        for path in sorted(stop_dir.glob("*/*.txt")):
+            parsed = parse_stophistory_file(
+                path.read_text(encoding="utf-8", errors="replace")
+            )
+            if not parsed.mac_name:
+                continue  # ex.: index.txt
+            stats.stop_events += len(parsed.events)
+            mac_names.add(parsed.mac_name)
+            stats.files += 1
+
+    stats.machines = len(mac_names)
+    return stats
