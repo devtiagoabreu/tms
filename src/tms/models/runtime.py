@@ -70,6 +70,7 @@ class DailyRaw(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     machine_id: Mapped[int] = mapped_column(ForeignKey("machines.id"), index=True)
     day: Mapped[str] = mapped_column(String(10), index=True)
+    shift_id: Mapped[str | None] = mapped_column(String(32), index=True)  # ex.: 2025.10.01.0
     seisan: Mapped[dict | None] = mapped_column(JSON)  # seisan(4) + off_prod(3)
     run_tm: Mapped[int | None] = mapped_column(Integer)  # segundos
     stop_ttm: Mapped[int | None] = mapped_column(Integer)  # segundos
