@@ -77,11 +77,13 @@ Somente leitura, paginada (`limit` ≤ 1000, `offset`) e filtrável por tear/dia
 | `GET\|PUT /api/settings/shift` | escala de turnos (`system_set.txt`) |
 | `GET\|PUT /api/settings/report-prefs` | itens de relatório (`selitem.txt`) |
 | `GET\|PUT /api/settings/value/{key}` | chave avulsa (`language`, `scanner_ip`, `memcard`…) |
+| `GET /api/screens/{efficiency\|production\|stop-analysis}` | `period`, `key`, `mac_name`, `day_from`, `day_to`, `week_start`, `min_run_tm`, `min_effic` (+ `unit`/`beam_type`) |
+| `GET /api/screens/{efficiency\|production\|stop-analysis}.csv` | idem; stop-analysis usa `value=count\|time` |
 | `GET /monitor` | dashboard HTML que consome `/api/monitor` (auto-refresh 30s) |
 
 Datas no formato legado `YYYY.MM.DD` (ex.: `2025.10.01`). OpenAPI em `/docs`.
 
-Relatórios agregam `daily_raw` por `(mac_name, mac_type, style, beam, ubeam)` —
+Relatórios agregam `agg_shift` por `(mac_name, mac_type, style, beam, ubeam)` —
 **soma** contadores/tempos e **recomputa** EFFIC/RPM/total (nunca média de
 taxas), como `TMSDATAfinal.pm`. A semana usa início configurável
 (`week_start`, 0=domingo), não ISO.
@@ -183,3 +185,19 @@ O merge de sub-redes (`ipset2.cgi`) é mantido: faixas da mesma sub-rede que se
 tocam são unidas e ordenadas. Os endpoints `GET|PUT /api/settings/*` expõem
 leitura/escrita; `GET /api/settings/ip-ranges` devolve também a lista de IPs
 expandida. Exemplo: as 3 faixas reais de `ipaddress.txt` expandem para 26 IPs.
+
+## Telas de relatório (Fase 3)
+
+`tms.reporting.screens` reproduz os layouts do legado em modo loom/style
+(períodos `day`/`week`/`month`), expostos em `/api/screens/*` (JSON e `.csv`):
+
+| Tela | Origem | Colunas |
+|---|---|---|
+| `efficiency` | `shift/efficiency.pm` | LOOM, STYLE, EFFIC%, RUN, STOP, WARP count + rate cph/cpday, WEFT count + rate cph/cpday |
+| `production` | `shift/production.pm` | LOOM, STYLE, PRODUCT (`seisan[unit]+off_prod[unit]`) |
+| `stop-analysis` | `shift/stopanalysis.cgi` | colunas escolhidas pelo `report_prefs` (selitem) + `UNSELECT` |
+
+No `stop-analysis`, `count_rows`/`time_rows` (JSON) e `value=count|time` (CSV)
+dão, respectivamente, contagem e minutos. O `UNSELECT` soma tudo o que não foi
+selecionado, e `WARP_TOP` só aparece quando configurado no selitem. As taxas de
+parada são recalculadas por hora de operação (`cph`) e por dia (`cph × 24`).

@@ -1,0 +1,196 @@
+"""Telas de relatório (Fase 3): efficiency, production e stop-analysis.
+
+Endpoints JSON e CSV no modo loom/style (períodos day/week/month).
+"""
+
+from __future__ import annotations
+
+import csv
+import io
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy.orm import Session
+
+from tms import config_service as cfg
+from tms.core.formulas import UNIT_PICK
+from tms.db.base import get_db
+from tms.reporting import PERIODS, WEEK_START
+from tms.reporting import periods as reporting
+from tms.reporting import screens
+
+router = APIRouter(prefix="/api/screens", tags=["screens"])
+
+Period = Query("day", description="day | week | month")
+WeekStart = Query(WEEK_START, ge=0, le=6)
+
+
+def _rows(
+    db: Session,
+    period: str,
+    *,
+    key: str | None,
+    mac_name: str | None,
+    day_from: str | None,
+    day_to: str | None,
+    week_start: int,
+    min_run_tm: float,
+    min_effic: float,
+) -> list[reporting.PeriodRow]:
+    if period not in PERIODS:
+        raise HTTPException(status_code=404, detail=f"período inválido: {period}")
+    return reporting.report(
+        db,
+        period,
+        key=key,
+        day_from=day_from,
+        day_to=day_to,
+        mac_name=mac_name,
+        week_start=week_start,
+        min_run_tm=min_run_tm,
+        min_effic=min_effic,
+    )
+
+
+def _csv_response(screen: screens.Screen, filename: str) -> Response:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\r\n")
+    writer.writerow(screen.header)
+    writer.writerows(screen.rows)
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _screen_out(screen: screens.Screen) -> dict:
+    return {
+        "period_type": screen.period_type,
+        "header": screen.header,
+        "rows": screen.rows,
+    }
+
+
+# --------------------------------------------------------------- efficiency --
+
+@router.get("/efficiency")
+def efficiency(
+    db: Session = Depends(get_db),
+    period: str = Period,
+    key: str | None = None,
+    mac_name: str | None = None,
+    day_from: str | None = None,
+    day_to: str | None = None,
+    week_start: int = WeekStart,
+    min_run_tm: float = Query(0.0, ge=0),
+    min_effic: float = Query(0.0, ge=0, le=100),
+) -> dict:
+    rows = _rows(db, period, key=key, mac_name=mac_name, day_from=day_from, day_to=day_to,
+                 week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic)
+    return _screen_out(screens.efficiency_screen(rows, period))
+
+
+@router.get("/efficiency.csv")
+def efficiency_csv(
+    db: Session = Depends(get_db),
+    period: str = Period,
+    key: str | None = None,
+    mac_name: str | None = None,
+    day_from: str | None = None,
+    day_to: str | None = None,
+    week_start: int = WeekStart,
+    min_run_tm: float = Query(0.0, ge=0),
+    min_effic: float = Query(0.0, ge=0, le=100),
+) -> Response:
+    rows = _rows(db, period, key=key, mac_name=mac_name, day_from=day_from, day_to=day_to,
+                 week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic)
+    return _csv_response(screens.efficiency_screen(rows, period), "tms-efficiency.csv")
+
+
+# --------------------------------------------------------------- production --
+
+@router.get("/production")
+def production(
+    db: Session = Depends(get_db),
+    period: str = Period,
+    key: str | None = None,
+    mac_name: str | None = None,
+    day_from: str | None = None,
+    day_to: str | None = None,
+    week_start: int = WeekStart,
+    min_run_tm: float = Query(0.0, ge=0),
+    min_effic: float = Query(0.0, ge=0, le=100),
+    unit: int = Query(UNIT_PICK, ge=0, le=2),
+) -> dict:
+    rows = _rows(db, period, key=key, mac_name=mac_name, day_from=day_from, day_to=day_to,
+                 week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic)
+    return _screen_out(screens.production_screen(rows, period, unit))
+
+
+@router.get("/production.csv")
+def production_csv(
+    db: Session = Depends(get_db),
+    period: str = Period,
+    key: str | None = None,
+    mac_name: str | None = None,
+    day_from: str | None = None,
+    day_to: str | None = None,
+    week_start: int = WeekStart,
+    min_run_tm: float = Query(0.0, ge=0),
+    min_effic: float = Query(0.0, ge=0, le=100),
+    unit: int = Query(UNIT_PICK, ge=0, le=2),
+) -> Response:
+    rows = _rows(db, period, key=key, mac_name=mac_name, day_from=day_from, day_to=day_to,
+                 week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic)
+    return _csv_response(screens.production_screen(rows, period, unit), "tms-production.csv")
+
+
+# ------------------------------------------------------------ stop-analysis --
+
+@router.get("/stop-analysis")
+def stop_analysis(
+    db: Session = Depends(get_db),
+    period: str = Period,
+    key: str | None = None,
+    mac_name: str | None = None,
+    day_from: str | None = None,
+    day_to: str | None = None,
+    week_start: int = WeekStart,
+    min_run_tm: float = Query(0.0, ge=0),
+    min_effic: float = Query(0.0, ge=0, le=100),
+    beam_type: int = Query(1, ge=1, le=2),
+) -> dict:
+    rows = _rows(db, period, key=key, mac_name=mac_name, day_from=day_from, day_to=day_to,
+                 week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic)
+    prefs = cfg.get_report_prefs(db)
+    count = screens.stop_analysis_screen(rows, prefs, period=period, beam_type=beam_type, time=False)
+    time = screens.stop_analysis_screen(rows, prefs, period=period, beam_type=beam_type, time=True)
+    return {
+        "period_type": count.period_type,
+        "header": count.header,
+        "count_rows": count.rows,
+        "time_rows": time.rows,
+    }
+
+
+@router.get("/stop-analysis.csv")
+def stop_analysis_csv(
+    db: Session = Depends(get_db),
+    period: str = Period,
+    key: str | None = None,
+    mac_name: str | None = None,
+    day_from: str | None = None,
+    day_to: str | None = None,
+    week_start: int = WeekStart,
+    min_run_tm: float = Query(0.0, ge=0),
+    min_effic: float = Query(0.0, ge=0, le=100),
+    beam_type: int = Query(1, ge=1, le=2),
+    value: str = Query("count", pattern="^(count|time)$"),
+) -> Response:
+    rows = _rows(db, period, key=key, mac_name=mac_name, day_from=day_from, day_to=day_to,
+                 week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic)
+    prefs = cfg.get_report_prefs(db)
+    screen = screens.stop_analysis_screen(
+        rows, prefs, period=period, beam_type=beam_type, time=(value == "time")
+    )
+    return _csv_response(screen, f"tms-stop-analysis-{value}.csv")
