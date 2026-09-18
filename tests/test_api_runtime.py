@@ -138,6 +138,17 @@ def test_report_invalid_period(client):
     assert client.get("/api/reports/hour").status_code == 404
 
 
+def test_report_csv(client):
+    response = client.get("/api/reports/day.csv", params={"key": "2025.10.01"})
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "attachment" in response.headers["content-disposition"]
+    lines = response.text.strip().splitlines()
+    assert lines[0].startswith("period,key,mac_name")
+    assert len(lines) == 3  # cabeçalho + 2 teares
+    assert "00001" in response.text
+
+
 def test_monitor_api(client):
     response = client.get("/api/monitor", params={"offline_after_s": 10**9})
     assert response.status_code == 200

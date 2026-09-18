@@ -27,6 +27,7 @@ from tms.core.formulas import (
     production,
     rpm_from_agg,
     shiftreport_total,
+    shiftreport_total2,
 )
 from tms.core.stopcodes import get_detail_stop
 from tms.ingest.shift_file import parse_shift_line
@@ -93,6 +94,9 @@ class PeriodRow:
 
     def total_ct(self, beam_type: int = 1) -> int:
         return shiftreport_total(self.stop_ct, beam_type)
+
+    def total2_ct(self, beam_type: int = 1) -> int:
+        return shiftreport_total2(self.stop_ct, beam_type)
 
 
 def month_key(day: str) -> str:

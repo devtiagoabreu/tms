@@ -68,6 +68,7 @@ Somente leitura, paginada (`limit` ≤ 1000, `offset`) e filtrável por tear/dia
 | `GET /api/stop-events` | `mac_name`, `day`, `shift_id`, `raw_code`, `day_from`, `day_to` |
 | `GET /api/operator-daily` | `mac_name`, `operator_code`, `day`, `day_from`, `day_to` |
 | `GET /api/reports/{day\|week\|month}` | `key`, `mac_name`, `day_from`, `day_to`, `week_start`, `min_run_tm`, `min_effic`, `unit`, `beam_type` |
+| `GET /api/reports/{day\|week\|month}.csv` | idem, exporta CSV (12 categorias + totais) |
 | `GET /api/monitor` | `offline_after_s`, `lang` — estado atual por tear |
 | `GET /monitor` | dashboard HTML que consome `/api/monitor` (auto-refresh 30s) |
 
@@ -109,3 +110,12 @@ Os **bits ao vivo** do tear (`Stop`/`Warp`/`Weft`… de `loom/apistate.cgi`) ain
 não são coletados; quando a coleta em tempo real for migrada, use
 `core.state.state_from_bits` (mesma precedência do legado) para enriquecer o
 estado. Production/efficiency/RPM vêm do último `agg_shift` do tear.
+
+## Relatórios — exportação CSV (Fase 3)
+
+`GET /api/reports/{period}.csv` gera um layout estável: identidade
+(`period,key,mac_name,mac_type,style,beam,ubeam`), métricas (`rpm,effic,
+run_tm,stop_ttm`), produção (`seisan_1..3,off_prod_1..3,production,pick`) e as
+12 categorias de parada como `ct_<CATEGORIA>`/`tm_<CATEGORIA>` + `total_ct`/
+`total2_ct`/`wf1*/wf2*/lh*` (arrays separados por `;`). Os nomes das categorias
+seguem `core.stopcodes.CATEGORY_KEYS`.
