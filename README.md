@@ -89,6 +89,10 @@ taxas), como `TMSDATAfinal.pm`. A semana usa início configurável
 ## Retenção e reprocessamento (Fase 1)
 
 ```bash
+# aplicar a política em camadas (1/3/12 meses); sem --reference usa a data mais nova do banco
+PYTHONPATH=src python -m tms.maintenance retention --dry-run
+PYTHONPATH=src python -m tms.maintenance retention --reference 2026.09.17
+
 # contar (sem apagar) o que sairia da retenção até 2024.12.31
 PYTHONPATH=src python -m tms.maintenance purge --to 2024.12.31 --dry-run
 
@@ -98,6 +102,12 @@ PYTHONPATH=src python -m tms.maintenance purge --to 2024.12.31 --sources stop_ev
 # recalcular agg_shift a partir de daily_raw (após mudar stopcodes/fórmulas)
 PYTHONPATH=src python -m tms.maintenance rebuild-agg --from 2025.01.01 --to 2025.12.31
 ```
+
+`retention` espelha a política do legado (`old_03/06/12_ym`): `machine_snapshots`
+1 mês; `daily_raw`/`stop_events` 3 meses; `agg_shift`/`operator_daily` 12 meses.
+Os períodos de semana/mês são calculados a partir de `agg_shift`, que sobrevive
+ao descarte do bruto — `report(...)` usa `source="agg"` por default
+(`source="raw"` usa `daily_raw`).
 
 `purge` exige ao menos `--from` ou `--to` (nunca apaga tudo por acidente).
 `rebuild-agg` reaproveita o `raw_line` guardado, então novos mapeamentos de
@@ -153,7 +163,8 @@ snapshot → `no_data`.
 run_tm,stop_ttm`), produção (`seisan_1..3,off_prod_1..3,production,pick`) e as
 12 categorias de parada como `ct_<CATEGORIA>`/`tm_<CATEGORIA>` + `total_ct`/
 `total2_ct`/`wf1*/wf2*/lh*` (arrays separados por `;`). Os nomes das categorias
-seguem `core.stopcodes.CATEGORY_KEYS`.
+seguem `core.stopcodes.CATEGORY_KEYS`. Os endpoints agregam a partir de
+`agg_shift` (`report(...)`, fonte retida por 12 meses).
 
 ## Configuração e edição (Fase 4)
 

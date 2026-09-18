@@ -129,7 +129,7 @@ def report_period(
     offset: int = Offset,
     db: Session = Depends(get_db),
 ) -> list[PeriodRowOut]:
-    """Agrega `daily_raw` por dia/semana/mês (sem médias; recomputa taxas)."""
+    """Agrega `agg_shift` por dia/semana/mês (sem médias; recomputa taxas)."""
     rows = _fetch(
         db,
         period,
