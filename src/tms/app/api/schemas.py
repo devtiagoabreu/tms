@@ -203,3 +203,15 @@ def serialize(obj: Any, schema: type, mac_name: Optional[str] = None) -> Any:
     if mac_name is not None:
         data["mac_name"] = mac_name
     return schema.model_validate(data)
+
+
+class TextPayload(_Base):
+    text: str = ""
+
+
+class PrefsPayload(_Base):
+    prefs: dict
+
+
+class ValuePayload(_Base):
+    value: Optional[str] = None

@@ -71,6 +71,12 @@ Somente leitura, paginada (`limit` ≤ 1000, `offset`) e filtrável por tear/dia
 | `GET /api/reports/{day\|week\|month}.csv` | idem, exporta CSV (12 categorias + totais) |
 | `GET /api/monitor` | `offline_after_s`, `lang`, `live`, `stored`, `timeout` — estado atual por tear |
 | `GET /api/live-status` | último status ao vivo persistido por tear |
+| `GET /api/settings` | todas as chaves/valores (`settings`) |
+| `GET\|PUT /api/settings/ip-ranges` | faixas de IP (`ipaddress.txt`; faz merge das sub-redes) |
+| `GET\|PUT /api/settings/styles` | estilos (`style_mst.txt`: nome/densidade/comprimento) |
+| `GET\|PUT /api/settings/shift` | escala de turnos (`system_set.txt`) |
+| `GET\|PUT /api/settings/report-prefs` | itens de relatório (`selitem.txt`) |
+| `GET\|PUT /api/settings/value/{key}` | chave avulsa (`language`, `scanner_ip`, `memcard`…) |
 | `GET /monitor` | dashboard HTML que consome `/api/monitor` (auto-refresh 30s) |
 
 Datas no formato legado `YYYY.MM.DD` (ex.: `2025.10.01`). OpenAPI em `/docs`.
@@ -148,3 +154,21 @@ run_tm,stop_ttm`), produção (`seisan_1..3,off_prod_1..3,production,pick`) e as
 12 categorias de parada como `ct_<CATEGORIA>`/`tm_<CATEGORIA>` + `total_ct`/
 `total2_ct`/`wf1*/wf2*/lh*` (arrays separados por `;`). Os nomes das categorias
 seguem `core.stopcodes.CATEGORY_KEYS`.
+
+## Configuração e edição (Fase 4)
+
+`tms.config_service` substitui os arquivos de configuração do legado por tabelas,
+com parser/serializador do formato original em cada caso:
+
+| Arquivo legado | Tabela / serviço |
+|---|---|
+| `setting/ipaddress.txt` | `ip_ranges` — `parse/merge/expand/replace_ip_ranges` |
+| `set/style_mst.txt` | `styles.density/doff_len` — `parse/replace_styles` |
+| `set/system_set.txt` (shift) | `shift_schedules` — `parse/replace/get_shift_schedule` |
+| `setting/selitem.txt` | `report_prefs` — `parse/format/get/replace_report_prefs` |
+| `setting/{language,scanner_ip,memcard}.txt` | `settings` — `get/set_setting` |
+
+O merge de sub-redes (`ipset2.cgi`) é mantido: faixas da mesma sub-rede que se
+tocam são unidas e ordenadas. Os endpoints `GET|PUT /api/settings/*` expõem
+leitura/escrita; `GET /api/settings/ip-ranges` devolve também a lista de IPs
+expandida. Exemplo: as 3 faixas reais de `ipaddress.txt` expandem para 26 IPs.

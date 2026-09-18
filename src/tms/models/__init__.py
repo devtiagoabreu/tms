@@ -1,7 +1,15 @@
 """Modelos ORM. Schema proposto em docs/migracao/07-plano-migracao-python.md §3."""
 
 from tms.db.base import Base
-from tms.models.masters import Machine, Operator, ReportPref, Setting, ShiftSchedule, Style
+from tms.models.masters import (
+    IpRange,
+    Machine,
+    Operator,
+    ReportPref,
+    Setting,
+    ShiftSchedule,
+    Style,
+)
 from tms.models.runtime import (
     AggShift,
     DailyRaw,
@@ -15,6 +23,7 @@ __all__ = [
     "AggShift",
     "Base",
     "DailyRaw",
+    "IpRange",
     "LiveStatusRecord",
     "Machine",
     "MachineSnapshot",

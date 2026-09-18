@@ -33,6 +33,24 @@ class Style(Base):
     name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     beam_type: Mapped[int] = mapped_column(Integer, default=1)  # 2 = top-beam loom
     unit: Mapped[int] = mapped_column(Integer, default=0)  # 0 PICK / 1 METER / 2 YARD
+    density: Mapped[str | None] = mapped_column(String(32))  # style_mst.txt (2ª coluna)
+    doff_len: Mapped[int | None] = mapped_column(Integer)  # style_mst.txt (3ª coluna)
+
+
+class IpRange(Base):
+    """Faixa de IP de teares (setting/ipaddress.txt: `a b c start end`)."""
+
+    __tablename__ = "ip_ranges"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    a: Mapped[int] = mapped_column(Integer)
+    b: Mapped[int] = mapped_column(Integer)
+    c: Mapped[int] = mapped_column(Integer)
+    start: Mapped[int] = mapped_column(Integer)
+    end: Mapped[int] = mapped_column(Integer)
+
+    def expand(self) -> list[str]:
+        return [f"{self.a}.{self.b}.{self.c}.{i}" for i in range(self.start, self.end + 1)]
 
 
 class Operator(Base):
