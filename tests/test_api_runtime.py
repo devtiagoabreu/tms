@@ -164,3 +164,21 @@ def test_monitor_page(client):
     assert response.status_code == 200
     assert "TMS - Monitor" in response.text
     assert "/api/monitor" in response.text
+
+
+def test_monitor_live_query(client, monkeypatch):
+    from tms.app.api import monitor as monitor_api
+    from tms.core.live import parse_live
+
+    live = parse_live(_text("live_jat710.txt").splitlines())
+    monkeypatch.setattr(monitor_api, "collect", lambda machines, **kwargs: {"00001": live})
+
+    response = client.get("/api/monitor", params={"live": "true"})
+    assert response.status_code == 200
+    item = {m["mac_name"]: m for m in response.json()}["00001"]
+    assert item["source"] == "live"
+    assert item["state"] == "stopped"
+    assert item["live"]["status"] == "Weft"
+    assert item["live"]["rpm"] == 558
+    assert item["rpm"] == 558
+    assert item["efficiency"] == 82.5

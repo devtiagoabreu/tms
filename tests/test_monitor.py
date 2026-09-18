@@ -77,3 +77,26 @@ def test_build_monitor_offline(db):
     items = {m["mac_name"]: m for m in build_monitor(db, now=now, offline_after_s=900)}
     assert items["00001"]["state"] == "offline"
     assert items["00002"]["state"] == "offline"
+
+
+def test_build_monitor_live_overlay(db):
+    from tms.core.live import parse_live
+
+    live = parse_live(_text("live_jat710.txt").splitlines())
+    now = datetime(2026, 9, 18, 14, 0, 0)  # offline pelo banco
+    items = {
+        m["mac_name"]: m
+        for m in build_monitor(db, now=now, offline_after_s=900, live={"00002": live})
+    }
+
+    # estado ao vivo sobrepõe o "offline" calculado do banco
+    assert items["00002"]["state"] == "stopped"
+    assert items["00002"]["source"] == "live"
+    assert items["00002"]["live"]["status"] == "Weft"
+    assert items["00002"]["efficiency"] == 82.5
+    assert items["00002"]["rpm"] == 558
+    assert items["00002"]["style"] == "2312"
+
+    # sem payload ao vivo, mantém a fonte do banco
+    assert items["00001"]["source"] == "db"
+    assert items["00001"]["live"] is None

@@ -1,15 +1,15 @@
-"""Estado do tear derivado dos dados ingeridos.
+"""Estado do tear.
 
 O legado (`loom/apistate.cgi::make_status_data`) deriva o estado de bits ao
-vivo enviados pelo tear (Stop, Warp, Weft, …). Essa coleta em tempo real ainda
-não foi migrada; aqui o estado é inferido de:
+vivo enviados pelo tear (Stop, Warp, Weft, …); em :mod:`tms.core.live` esses
+bits são parseados e :func:`state_from_bits` mantém a precedência do legado.
+
+Quando a coleta ao vivo não está disponível, o estado é inferido do banco por
+:func:`decide_state`:
 
 - frescura do último snapshot (`machine_snapshots.get_time`) → ``offline``;
 - existência de parada em aberto em `stop_events` → ``stopped``;
 - caso contrário → ``run``.
-
-Quando a camada de coleta ao vivo existir, basta passar os bits para
-:func:`state_from_bits`, mantendo a mesma precedência do legado.
 """
 
 from __future__ import annotations

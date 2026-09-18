@@ -50,12 +50,13 @@ function card(m) {
   const rpm = m.rpm == null ? '-' : m.rpm;
   const stop = m.stop ? `<div class="stop">${m.stop.cause} (${m.stop.duration_min ?? '?'} min)</div>` : '';
   const bar = m.efficiency == null ? '' : `<div class="bar"><span style="width:${Math.min(100, m.efficiency)}%"></span></div>`;
+  const live = m.live ? `<div class="row"><span>${m.live.status}</span><span>24h ${m.live.efficiency_24h ?? '-'}%</span></div>` : '';
   return `<div class="card" style="border-left-color:${m.color}">
     <div class="top"><span class="mac">${m.mac_name}</span><span class="state" style="color:${m.color}">${m.state_label}</span></div>
     <div class="row"><span>${m.mac_type} ${m.style || ''}</span><span>visto h\u00e1 ${m.age_min ?? '?'} min</span></div>
     <div class="row"><span>Produ\u00e7\u00e3o ${prod}</span><span>RPM ${rpm}</span></div>
     <div class="row"><span>Efici\u00eancia ${eff}%</span><span>${m.shift_id || ''}</span></div>
-    ${bar}${stop}
+    ${live}${bar}${stop}
   </div>`;
 }
 async function refresh() {

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from tms.core.formulas import rpm_from_agg
+from tms.core.live import LiveStatus, live_to_monitor_state
 from tms.core.state import color, decide_state, label
 from tms.core.stopcodes import get_stop_cause
 from tms.models.masters import Machine
@@ -69,8 +70,13 @@ def build_monitor(
     now: Optional[datetime] = None,
     offline_after_s: int = DEFAULT_OFFLINE_AFTER_S,
     lang: str = "pt",
+    live: Optional[Mapping[str, LiveStatus]] = None,
 ) -> List[Dict[str, Any]]:
-    """Lista o estado atual de cada tear (para API/dashboard)."""
+    """Lista o estado atual de cada tear (para API/dashboard).
+
+    `live` sobrepõe o estado derivado do banco quando o payload ao vivo do tear
+    está disponível (ver :mod:`tms.collector`).
+    """
     now = now or datetime.utcnow()
     machines = db.execute(select(Machine).order_by(Machine.mac_name)).scalars().all()
     snaps = _latest_snapshots(db)
@@ -83,6 +89,7 @@ def build_monitor(
         event = stops.get(machine.id)
         agg = aggs.get(machine.id)
         open_stop = _open_stop(event)
+        live_item = live.get(machine.mac_name) if live else None
 
         last_seen = snap.get_time if snap else None
         state = decide_state(
@@ -91,6 +98,30 @@ def build_monitor(
             offline_after_s=offline_after_s,
             has_open_stop=open_stop,
         )
+        if live_item is not None:
+            state = live_to_monitor_state(live_item)
+
+        efficiency = round(agg.effic, 1) if agg and agg.effic is not None else None
+        rpm = round(rpm_from_agg(agg.seisan_1 or 0.0, agg.run_tm or 0.0), 1) if agg else None
+        live_payload = None
+        if live_item is not None:
+            live_payload = {
+                "status": live_item.status,
+                "duration": live_item.duration,
+                "rpm": live_item.value("rpm"),
+                "efficiency": live_item.effic_shift,
+                "efficiency_24h": live_item.effic_24h,
+                "shift_stops": live_item.value("stop_shift"),
+                "stops_24h": live_item.value("stop_24h"),
+                "style": live_item.style or None,
+                "top_beam_use": live_item.top_beam_use,
+                "error": live_item.error,
+                "complete": live_item.complete,
+            }
+            if live_payload["efficiency"] is not None:
+                efficiency = round(live_payload["efficiency"], 1)
+            if live_payload["rpm"] is not None:
+                rpm = round(live_payload["rpm"], 1)
 
         stop_info = None
         if open_stop and event is not None:
@@ -117,16 +148,16 @@ def build_monitor(
                     round((now - last_seen).total_seconds() / 60.0, 1) if last_seen else None
                 ),
                 "shift_id": snap.shift_id if snap else None,
-                "style": snap.style if snap else None,
+                "style": (live_payload or {}).get("style") or (snap.style if snap else None),
                 "beam": snap.beam if snap else None,
                 "production": (
                     round((agg.seisan_1 or 0.0) + (agg.off_prod_1 or 0.0), 1) if agg else None
                 ),
-                "efficiency": round(agg.effic, 1) if agg and agg.effic is not None else None,
-                "rpm": (
-                    round(rpm_from_agg(agg.seisan_1 or 0.0, agg.run_tm or 0.0), 1) if agg else None
-                ),
+                "efficiency": efficiency,
+                "rpm": rpm,
                 "stop": stop_info,
+                "source": "live" if live_payload else "db",
+                "live": live_payload,
             }
         )
     return result

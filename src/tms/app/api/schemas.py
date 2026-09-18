@@ -104,6 +104,20 @@ class OpenStopOut(_Base):
     duration_min: Optional[float] = None
 
 
+class LiveStatusOut(_Base):
+    status: str
+    duration: Optional[float] = None
+    rpm: Optional[float] = None
+    efficiency: Optional[float] = None
+    efficiency_24h: Optional[float] = None
+    shift_stops: Optional[float] = None
+    stops_24h: Optional[float] = None
+    style: Optional[str] = None
+    top_beam_use: int = 0
+    error: Optional[int] = None
+    complete: bool = False
+
+
 class MonitorItemOut(_Base):
     mac_name: str
     mac_type: str
@@ -120,6 +134,8 @@ class MonitorItemOut(_Base):
     efficiency: Optional[float] = None
     rpm: Optional[float] = None
     stop: Optional[OpenStopOut] = None
+    source: str = "db"
+    live: Optional[LiveStatusOut] = None
 
 
 class PeriodRowOut(_Base):

@@ -69,7 +69,7 @@ Somente leitura, paginada (`limit` ≤ 1000, `offset`) e filtrável por tear/dia
 | `GET /api/operator-daily` | `mac_name`, `operator_code`, `day`, `day_from`, `day_to` |
 | `GET /api/reports/{day\|week\|month}` | `key`, `mac_name`, `day_from`, `day_to`, `week_start`, `min_run_tm`, `min_effic`, `unit`, `beam_type` |
 | `GET /api/reports/{day\|week\|month}.csv` | idem, exporta CSV (12 categorias + totais) |
-| `GET /api/monitor` | `offline_after_s`, `lang` — estado atual por tear |
+| `GET /api/monitor` | `offline_after_s`, `lang`, `live`, `timeout` — estado atual por tear |
 | `GET /monitor` | dashboard HTML que consome `/api/monitor` (auto-refresh 30s) |
 
 Datas no formato legado `YYYY.MM.DD` (ex.: `2025.10.01`). OpenAPI em `/docs`.
@@ -106,10 +106,27 @@ Dashboard em `/monitor` (cards coloridos, refresh 30s) alimentado por
   (com código/causa e duração);
 - caso contrário → `run`; sem snapshot → `no_data`.
 
-Os **bits ao vivo** do tear (`Stop`/`Warp`/`Weft`… de `loom/apistate.cgi`) ainda
-não são coletados; quando a coleta em tempo real for migrada, use
-`core.state.state_from_bits` (mesma precedência do legado) para enriquecer o
-estado. Production/efficiency/RPM vêm do último `agg_shift` do tear.
+### Coleta ao vivo
+
+`core/live.py` reproduz `loom/apistate.cgi::make_status_data`: parseia as linhas
+`Chave=valor` do tear (`ext.cgi?func=get_stat`), valida a completude
+(JAT710 `scnt>=14`, LWT710 `scnt>=15`, `dcnt>=13`, `vcnt>=2`) e deriva o status
+pelos bits na mesma precedência do legado. Códigos de erro de coleta (`100`
+ping, `220`/`300` HTTP, `400` socket, `1000` não suportado, `1001` dados) viram
+`offline`/`no_data` em `live_to_monitor_state`.
+
+`tms.collector` busca o payload de cada tear (stdlib `urllib`, sem dependências)
+e pode ser usado como CLI — `--host NOME=IP` (repetível) ou, sem hosts, lê os
+IPs de `machines.ip_addr` no banco:
+
+```bash
+PYTHONPATH=src python -m tms.collector --host 00001=10.0.0.11 --timeout 5
+```
+
+`GET /api/monitor?live=true` faz a coleta (lenta) e usa o estado ao vivo, com os
+bits/dados em `live` e `source="live"`. Sem `live`, o estado é inferido do
+banco: frescura do snapshot → `offline`; parada em aberto no `stop_history` →
+`stopped`; senão `run`; sem snapshot → `no_data`.
 
 ## Relatórios — exportação CSV (Fase 3)
 
