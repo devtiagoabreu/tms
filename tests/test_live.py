@@ -125,3 +125,65 @@ def test_collect_builds_mapping(monkeypatch):
     result = collector.collect([("00001", "10.0.0.1"), ("00002", "10.0.0.2")])
     assert set(result) == {"00001", "00002"}
     assert result["00001"].status == "CatchCode_front"
+
+
+def test_scan_post_body():
+    body, file2mac = collector.scan_post_body(["S1-00001.1", "S1-00002.7", "nope"])
+    assert body.startswith("boundary=" + collector.SCAN_BOUNDARY)
+    assert "..\\data\\status\\01001.txt" in body
+    assert "..\\data\\status\\02007.txt" in body
+    assert file2mac["..\\data\\status\\01001.txt"] == "S1-00001.1"
+    assert len(file2mac) == 2
+
+
+def test_parse_mget_response():
+    b = collector.SCAN_BOUNDARY
+    lines = (
+        [b, "..\\data\\status\\01001.txt"]
+        + _lines("live_lwt710.txt")
+        + [""]
+        + [b, "..\\data\\status\\02001.txt"]
+        + _lines("live_jat710.txt")
+        + [b]
+    )
+    _, file2mac = collector.scan_post_body(["S1-00001.1", "S1-00002.1"])
+    groups = collector.parse_mget_response(lines, file2mac)
+    assert set(groups) == {"S1-00001.1", "S1-00002.1"}
+    assert groups["S1-00001.1"][0] == "Machine_type=LWT710"
+
+
+def test_fetch_scan_live(monkeypatch):
+    b = collector.SCAN_BOUNDARY
+    body = "\n".join(
+        [b, "..\\data\\status\\01001.txt"]
+        + _lines("live_lwt710.txt")
+        + ["", b, "..\\data\\status\\02001.txt"]
+        + _lines("live_jat710.txt")
+        + [b]
+    ).encode("utf-8")
+    monkeypatch.setattr(
+        collector.urllib.request, "urlopen", lambda request, timeout: _Response(body)
+    )
+    result = collector.fetch_scan_live("10.0.0.9", ["S1-00001.1", "S1-00002.1"])
+    assert result["S1-00001.1"].status == "CatchCode_front"
+    assert result["S1-00002.1"].status == "Weft"
+
+
+def test_fetch_scan_live_missing_group(monkeypatch):
+    b = collector.SCAN_BOUNDARY
+    body = "\n".join([b, "..\\data\\status\\01001.txt", b]).encode("utf-8")
+    monkeypatch.setattr(
+        collector.urllib.request, "urlopen", lambda request, timeout: _Response(body)
+    )
+    result = collector.fetch_scan_live("10.0.0.9", ["S1-00001.1", "S1-00002.1"])
+    assert result["S1-00001.1"].error == DATA_ERROR
+    assert result["S1-00002.1"].error == DATA_ERROR
+
+
+def test_fetch_scan_live_timeout(monkeypatch):
+    def _raise(request, timeout):
+        raise socket.timeout()
+
+    monkeypatch.setattr(collector.urllib.request, "urlopen", _raise)
+    result = collector.fetch_scan_live("10.0.0.9", ["S1-00001.1"])
+    assert result["S1-00001.1"].error == PING_TIMEOUT

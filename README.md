@@ -69,7 +69,8 @@ Somente leitura, paginada (`limit` ≤ 1000, `offset`) e filtrável por tear/dia
 | `GET /api/operator-daily` | `mac_name`, `operator_code`, `day`, `day_from`, `day_to` |
 | `GET /api/reports/{day\|week\|month}` | `key`, `mac_name`, `day_from`, `day_to`, `week_start`, `min_run_tm`, `min_effic`, `unit`, `beam_type` |
 | `GET /api/reports/{day\|week\|month}.csv` | idem, exporta CSV (12 categorias + totais) |
-| `GET /api/monitor` | `offline_after_s`, `lang`, `live`, `timeout` — estado atual por tear |
+| `GET /api/monitor` | `offline_after_s`, `lang`, `live`, `stored`, `timeout` — estado atual por tear |
+| `GET /api/live-status` | último status ao vivo persistido por tear |
 | `GET /monitor` | dashboard HTML que consome `/api/monitor` (auto-refresh 30s) |
 
 Datas no formato legado `YYYY.MM.DD` (ex.: `2025.10.01`). OpenAPI em `/docs`.
@@ -116,17 +117,28 @@ ping, `220`/`300` HTTP, `400` socket, `1000` não suportado, `1001` dados) viram
 `offline`/`no_data` em `live_to_monitor_state`.
 
 `tms.collector` busca o payload de cada tear (stdlib `urllib`, sem dependências)
-e pode ser usado como CLI — `--host NOME=IP` (repetível) ou, sem hosts, lê os
-IPs de `machines.ip_addr` no banco:
+por dois caminhos do legado: JAT710 via `ext.cgi?func=get_stat` no IP do tear e
+LWT710 via scanner (`mget.cgi`, corpo `boundary=…&file=..\data\status\NNMMM.txt`).
+Pode ser usado como CLI — `--host NOME=IP` (repetível) ou, sem hosts, lê os IPs
+de `machines.ip_addr` no banco:
 
 ```bash
+# uma coleta
 PYTHONPATH=src python -m tms.collector --host 00001=10.0.0.11 --timeout 5
+
+# LWT via scanner
+PYTHONPATH=src python -m tms.collector --scanner-ip 10.0.0.9 --scan-id S1-00001.1
+
+# grava em live_status e coleta a cada 60s
+PYTHONPATH=src python -m tms.collector --persist --loop --interval 60
 ```
 
-`GET /api/monitor?live=true` faz a coleta (lenta) e usa o estado ao vivo, com os
-bits/dados em `live` e `source="live"`. Sem `live`, o estado é inferido do
-banco: frescura do snapshot → `offline`; parada em aberto no `stop_history` →
-`stopped`; senão `run`; sem snapshot → `no_data`.
+`GET /api/monitor?live=true` faz a coleta (lenta) e usa o estado ao vivo;
+`?stored=true` usa o último status gravado em `live_status` (endpoint
+`GET /api/live-status`). Em ambos, `source="live"` e os bits/dados vêm em `live`.
+Sem nenhum deles, o estado é inferido do banco: frescura do snapshot →
+`offline`; parada em aberto no `stop_history` → `stopped`; senão `run`; sem
+snapshot → `no_data`.
 
 ## Relatórios — exportação CSV (Fase 3)
 

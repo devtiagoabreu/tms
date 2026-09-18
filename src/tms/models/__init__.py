@@ -5,6 +5,7 @@ from tms.models.masters import Machine, Operator, ReportPref, Setting, ShiftSche
 from tms.models.runtime import (
     AggShift,
     DailyRaw,
+    LiveStatusRecord,
     MachineSnapshot,
     OperatorDaily,
     StopEvent,
@@ -14,6 +15,7 @@ __all__ = [
     "AggShift",
     "Base",
     "DailyRaw",
+    "LiveStatusRecord",
     "Machine",
     "MachineSnapshot",
     "Operator",

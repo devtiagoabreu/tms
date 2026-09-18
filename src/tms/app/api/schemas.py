@@ -118,6 +118,22 @@ class LiveStatusOut(_Base):
     complete: bool = False
 
 
+class LiveStatusRecordOut(_Base):
+    mac_name: str
+    collected_at: datetime
+    mac_type: str
+    state: str
+    status: str
+    error: Optional[int] = None
+    complete: bool = False
+    duration: Optional[float] = None
+    rpm: Optional[float] = None
+    efficiency: Optional[float] = None
+    efficiency_24h: Optional[float] = None
+    bits: Optional[dict] = None
+    setup: Optional[dict] = None
+
+
 class MonitorItemOut(_Base):
     mac_name: str
     mac_type: str

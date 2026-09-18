@@ -182,3 +182,33 @@ def test_monitor_live_query(client, monkeypatch):
     assert item["live"]["rpm"] == 558
     assert item["rpm"] == 558
     assert item["efficiency"] == 82.5
+
+
+def test_live_status_and_stored_monitor(client):
+    from sqlalchemy import select
+
+    from tms.app.main import app
+    from tms.core.live import parse_live
+    from tms.db.base import get_db
+    from tms.live_store import persist_live
+    from tms.models.masters import Machine
+
+    session = next(app.dependency_overrides[get_db]())
+    machine = session.execute(
+        select(Machine).where(Machine.mac_name == "00001")
+    ).scalar_one()
+    live = parse_live(_text("live_jat710.txt").splitlines())
+    persist_live(session, {"00001": machine.id}, {"00001": live})
+    session.commit()
+
+    response = client.get("/api/live-status")
+    assert response.status_code == 200
+    items = {m["mac_name"]: m for m in response.json()}
+    assert items["00001"]["status"] == "Weft"
+    assert items["00001"]["state"] == "stopped"
+
+    monitor = client.get("/api/monitor", params={"stored": "true"})
+    item = {m["mac_name"]: m for m in monitor.json()}["00001"]
+    assert item["source"] == "live"
+    assert item["state"] == "stopped"
+    assert item["live"]["status"] == "Weft"

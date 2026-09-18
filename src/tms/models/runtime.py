@@ -99,6 +99,31 @@ class OperatorDaily(Base):
     collected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class LiveStatusRecord(Base):
+    """Status ao vivo coletado do tear (`ext.cgi?func=get_stat` / scanner).
+
+    Uma linha por coleta; `latest_live` usa a mais recente por máquina.
+    """
+
+    __tablename__ = "live_status"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    machine_id: Mapped[int] = mapped_column(ForeignKey("machines.id"), index=True)
+    collected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    mac_type: Mapped[str] = mapped_column(String(8), default="JAT710")
+    state: Mapped[str] = mapped_column(String(16))  # run|stopped|offline|no_data
+    status: Mapped[str] = mapped_column(String(24))  # Run|Weft|Comm_error|…
+    error: Mapped[int | None] = mapped_column(Integer)
+    complete: Mapped[bool] = mapped_column(default=False)
+    duration: Mapped[float | None] = mapped_column(Float)
+    rpm: Mapped[float | None] = mapped_column(Float)
+    efficiency: Mapped[float | None] = mapped_column(Float)
+    efficiency_24h: Mapped[float | None] = mapped_column(Float)
+    bits: Mapped[dict | None] = mapped_column(JSON)
+    data: Mapped[dict | None] = mapped_column(JSON)
+    setup: Mapped[dict | None] = mapped_column(JSON)
+
+
 class AggShift(Base):
     """Linha agregada por turno (shift-shift/<shift>.txt).
 
