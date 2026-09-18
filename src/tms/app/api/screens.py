@@ -1,6 +1,7 @@
 """Telas de relatório (Fase 3): efficiency, production e stop-analysis.
 
-Endpoints JSON e CSV no modo loom/style (períodos day/week/month).
+Endpoints JSON e CSV nos modos tear/estilo (``mode=shift``) e operador
+(``mode=operator``); períodos shift/day/week/month.
 """
 
 from __future__ import annotations
@@ -20,8 +21,9 @@ from tms.reporting import screens
 
 router = APIRouter(prefix="/api/screens", tags=["screens"])
 
-Period = Query("day", description="day | week | month")
+Period = Query("day", description="shift | day | week | month")
 WeekStart = Query(WEEK_START, ge=0, le=6)
+Mode = Query("shift", pattern="^(shift|operator)$")
 
 
 def _rows(
@@ -35,20 +37,25 @@ def _rows(
     week_start: int,
     min_run_tm: float,
     min_effic: float,
+    mode: str,
 ) -> list[reporting.PeriodRow]:
     if period not in PERIODS:
         raise HTTPException(status_code=404, detail=f"período inválido: {period}")
-    return reporting.report(
-        db,
-        period,
-        key=key,
-        day_from=day_from,
-        day_to=day_to,
-        mac_name=mac_name,
-        week_start=week_start,
-        min_run_tm=min_run_tm,
-        min_effic=min_effic,
-    )
+    try:
+        return reporting.report(
+            db,
+            period,
+            key=key,
+            day_from=day_from,
+            day_to=day_to,
+            mac_name=mac_name,
+            week_start=week_start,
+            min_run_tm=min_run_tm,
+            min_effic=min_effic,
+            mode=mode,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 def _csv_response(screen: screens.Screen, filename: str) -> Response:
@@ -77,6 +84,7 @@ def _screen_out(screen: screens.Screen) -> dict:
 def efficiency(
     db: Session = Depends(get_db),
     period: str = Period,
+    mode: str = Mode,
     key: str | None = None,
     mac_name: str | None = None,
     day_from: str | None = None,
@@ -86,14 +94,15 @@ def efficiency(
     min_effic: float = Query(0.0, ge=0, le=100),
 ) -> dict:
     rows = _rows(db, period, key=key, mac_name=mac_name, day_from=day_from, day_to=day_to,
-                 week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic)
-    return _screen_out(screens.efficiency_screen(rows, period))
+                 week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic, mode=mode)
+    return _screen_out(screens.efficiency_screen(rows, period, mode))
 
 
 @router.get("/efficiency.csv")
 def efficiency_csv(
     db: Session = Depends(get_db),
     period: str = Period,
+    mode: str = Mode,
     key: str | None = None,
     mac_name: str | None = None,
     day_from: str | None = None,
@@ -103,8 +112,8 @@ def efficiency_csv(
     min_effic: float = Query(0.0, ge=0, le=100),
 ) -> Response:
     rows = _rows(db, period, key=key, mac_name=mac_name, day_from=day_from, day_to=day_to,
-                 week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic)
-    return _csv_response(screens.efficiency_screen(rows, period), "tms-efficiency.csv")
+                 week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic, mode=mode)
+    return _csv_response(screens.efficiency_screen(rows, period, mode), "tms-efficiency.csv")
 
 
 # --------------------------------------------------------------- production --
@@ -113,6 +122,7 @@ def efficiency_csv(
 def production(
     db: Session = Depends(get_db),
     period: str = Period,
+    mode: str = Mode,
     key: str | None = None,
     mac_name: str | None = None,
     day_from: str | None = None,
@@ -123,14 +133,15 @@ def production(
     unit: int = Query(UNIT_PICK, ge=0, le=2),
 ) -> dict:
     rows = _rows(db, period, key=key, mac_name=mac_name, day_from=day_from, day_to=day_to,
-                 week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic)
-    return _screen_out(screens.production_screen(rows, period, unit))
+                 week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic, mode=mode)
+    return _screen_out(screens.production_screen(rows, period, unit, mode))
 
 
 @router.get("/production.csv")
 def production_csv(
     db: Session = Depends(get_db),
     period: str = Period,
+    mode: str = Mode,
     key: str | None = None,
     mac_name: str | None = None,
     day_from: str | None = None,
@@ -141,8 +152,8 @@ def production_csv(
     unit: int = Query(UNIT_PICK, ge=0, le=2),
 ) -> Response:
     rows = _rows(db, period, key=key, mac_name=mac_name, day_from=day_from, day_to=day_to,
-                 week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic)
-    return _csv_response(screens.production_screen(rows, period, unit), "tms-production.csv")
+                 week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic, mode=mode)
+    return _csv_response(screens.production_screen(rows, period, unit, mode), "tms-production.csv")
 
 
 # ------------------------------------------------------------ stop-analysis --
@@ -151,6 +162,7 @@ def production_csv(
 def stop_analysis(
     db: Session = Depends(get_db),
     period: str = Period,
+    mode: str = Mode,
     key: str | None = None,
     mac_name: str | None = None,
     day_from: str | None = None,
@@ -161,10 +173,12 @@ def stop_analysis(
     beam_type: int = Query(1, ge=1, le=2),
 ) -> dict:
     rows = _rows(db, period, key=key, mac_name=mac_name, day_from=day_from, day_to=day_to,
-                 week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic)
+                 week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic, mode=mode)
     prefs = cfg.get_report_prefs(db)
-    count = screens.stop_analysis_screen(rows, prefs, period=period, beam_type=beam_type, time=False)
-    time = screens.stop_analysis_screen(rows, prefs, period=period, beam_type=beam_type, time=True)
+    count = screens.stop_analysis_screen(rows, prefs, period=period, beam_type=beam_type,
+                                         time=False, mode=mode)
+    time = screens.stop_analysis_screen(rows, prefs, period=period, beam_type=beam_type,
+                                        time=True, mode=mode)
     return {
         "period_type": count.period_type,
         "header": count.header,
@@ -177,6 +191,7 @@ def stop_analysis(
 def stop_analysis_csv(
     db: Session = Depends(get_db),
     period: str = Period,
+    mode: str = Mode,
     key: str | None = None,
     mac_name: str | None = None,
     day_from: str | None = None,
@@ -188,9 +203,9 @@ def stop_analysis_csv(
     value: str = Query("count", pattern="^(count|time)$"),
 ) -> Response:
     rows = _rows(db, period, key=key, mac_name=mac_name, day_from=day_from, day_to=day_to,
-                 week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic)
+                 week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic, mode=mode)
     prefs = cfg.get_report_prefs(db)
     screen = screens.stop_analysis_screen(
-        rows, prefs, period=period, beam_type=beam_type, time=(value == "time")
+        rows, prefs, period=period, beam_type=beam_type, time=(value == "time"), mode=mode
     )
     return _csv_response(screen, f"tms-stop-analysis-{value}.csv")

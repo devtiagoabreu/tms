@@ -167,3 +167,130 @@ def test_stop_analysis_endpoint(client):
 
 def test_screens_invalid_period(client):
     assert client.get("/api/screens/efficiency", params={"period": "hour"}).status_code == 404
+
+
+def test_report_shift_period(session):
+    """period=shift agrupa por shift_id (chave = 2025.10.01.0)."""
+    rows = reporting.report(session, "shift", key="2025.10.01.0")
+    assert len(rows) == 2
+    assert rows[0].key == "2025.10.01.0"
+
+
+def test_report_shift_invalid_operator_mode(session):
+    """mode=operator + period=shift deve levantar ValueError."""
+    with pytest.raises(ValueError, match="turno"):
+        reporting.report(session, "shift", mode="operator")
+
+
+def _operator_text(ope_nums=("1", "2"), names=("Ope1", "Ope2")):
+    """`operator_2025.10.01.txt` com ope_num/ope_name distintos por tear."""
+    import re
+
+    out = []
+    for i, line in enumerate([ln for ln in _text("operator_2025.10.01.txt").splitlines() if ln.strip()]):
+        line = line.replace("ope_num 0", f"ope_num {ope_nums[i]}")
+        line = re.sub(r"ope_name [^,]+", f"ope_name {names[i]}", line)
+        out.append(line)
+    return "\n".join(out)
+
+
+@pytest.fixture
+def op_session():
+    """Sessão com `operator_daily` de 2 operadores distintos (sem shift/operador default)."""
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    pipeline.ingest_current(db, _text("current.txt"))
+    pipeline.ingest_operator(db, _operator_text())
+    db.commit()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def test_report_operator_mode(op_session):
+    """mode=operator agrega operator_daily por nome do operador."""
+    rows = reporting.report(op_session, "day", key="2025.10.01", mode="operator")
+    assert len(rows) == 2
+    operators = {r.operator for r in rows}
+    assert operators == {"Ope1", "Ope2"}
+    for r in rows:
+        assert r.operator is not None
+
+
+def test_efficiency_operator_mode(op_session):
+    """efficiency_screen com mode=operator tem header OPERATOR (sem LOOM/STYLE)."""
+    rows = reporting.report(op_session, "day", key="2025.10.01", mode="operator")
+    screen = screens.efficiency_screen(rows, "day", mode="operator")
+    assert screen.header[1] == "OPERATOR"
+    assert "LOOM" not in screen.header
+    assert "STYLE" not in screen.header
+    assert len(screen.rows) == 2
+    operators_in_data = {line[1] for line in screen.rows}
+    assert operators_in_data == {"Ope1", "Ope2"}
+
+
+def test_production_operator_mode(op_session):
+    """production_screen com mode=operator."""
+    rows = reporting.report(op_session, "day", key="2025.10.01", mode="operator")
+    screen = screens.production_screen(rows, "day", mode="operator")
+    assert screen.header[1] == "OPERATOR"
+    assert "LOOM" not in screen.header
+
+
+def test_stop_analysis_operator_mode(op_session):
+    """stop_analysis_screen com mode=operator."""
+    rows = reporting.report(op_session, "day", key="2025.10.01", mode="operator")
+    prefs = copy.deepcopy(cfg.SELITEM_DEFAULTS)
+    screen = screens.stop_analysis_screen(rows, prefs, period="day", mode="operator")
+    assert screen.header[1] == "OPERATOR"
+    assert "LOOM" not in screen.header
+    assert "STYLE" not in screen.header
+
+
+def test_efficiency_shift_endpoint(client):
+    """GET /api/screens/efficiency?period=shift"""
+    response = client.get("/api/screens/efficiency", params={"period": "shift"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["period_type"] == 0
+    assert body["header"][0] == "SHIFT"
+
+
+def test_efficiency_operator_endpoint(client):
+    """GET /api/screens/efficiency?mode=operator"""
+    response = client.get("/api/screens/efficiency", params={"mode": "operator"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["header"][1] == "OPERATOR"
+
+
+def test_production_shift_endpoint(client):
+    response = client.get("/api/screens/production", params={"period": "shift"})
+    assert response.status_code == 200
+    assert response.json()["header"][0] == "SHIFT"
+
+
+def test_stop_analysis_shift_endpoint(client):
+    response = client.get("/api/screens/stop-analysis", params={"period": "shift"})
+    assert response.status_code == 200
+    assert response.json()["period_type"] == 0
+
+
+def test_stop_analysis_operator_endpoint(client):
+    response = client.get("/api/screens/stop-analysis", params={"mode": "operator"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["header"][1] == "OPERATOR"
+
+
+def test_screens_operator_shift_conflict(client):
+    """mode=operator + period=shift → 400."""
+    response = client.get(
+        "/api/screens/efficiency",
+        params={"period": "shift", "mode": "operator"},
+    )
+    assert response.status_code == 400

@@ -1,15 +1,19 @@
-"""Agregação de período (dia/semana/mês) a partir dos registros brutos.
+"""Agregação de período (turno/dia/semana/mês) a partir dos registros.
 
 Espelha `common/TMSDATAfinal.pm`:
 
-- agrupa por ``(mac_name, mac_type, style, beam, ubeam)`` (em modo turno o
-  operador é "dummy", ou seja, ignorado);
+- agrupa por ``(mac_name, mac_type, style, beam, ubeam)`` no modo tear/estilo
+  e por ``(período, operador)`` no modo operador;
 - soma ``seisan``/``off_prod`` (décimos), ``run_tm``/``stop_ttm`` (segundos) e
   os arrays crus de parada, **sem** tirar médias;
 - recomputa EFFIC/RPM a partir das somas (nunca média de taxas);
 - filtra cada registro por ``run_tm >= min_run_tm`` (minutos) e
   ``effic >= min_effic`` **antes** de agregar;
 - semana ancorada no início configurável (0 = domingo, como o legado), não ISO.
+
+Período ``shift`` usa o `shift_id` completo (``YYYY.MM.DD.n``) como chave.
+O modo operador agrega `operator_daily` por nome do operador (sem
+granularidade de turno).
 """
 
 from __future__ import annotations
@@ -31,13 +35,13 @@ from tms.core.formulas import (
 )
 from tms.core.stopcodes import get_detail_stop
 from tms.ingest.shift_file import parse_shift_line
-from tms.models.masters import Machine
-from tms.models.runtime import AggShift, DailyRaw
+from tms.models.masters import Machine, Operator
+from tms.models.runtime import AggShift, DailyRaw, OperatorDaily
 
 # 0 = domingo (default do selitem legado). 1 = segunda, ...
 WEEK_START = 0
 
-PERIODS = ("day", "week", "month")
+PERIODS = ("shift", "day", "week", "month")
 
 _RAW_LEN = {"JAT": 40, "LWT": 31}
 
@@ -58,6 +62,7 @@ class RawRecord:
     s_ct: tuple[int, ...] = ()
     s_tm: tuple[int, ...] = ()
     day: Optional[str] = None  # YYYY.MM.DD (para particionar o período)
+    shift_id: Optional[str] = None  # YYYY.MM.DD.n (usado no período "shift")
 
     def effic(self) -> float:
         return effic(self.run_tm, self.stop_ttm)
@@ -74,6 +79,7 @@ class PeriodRow:
     style: Optional[str]
     beam: Optional[str]
     ubeam: Optional[str]
+    operator: Optional[str] = None
     seisan: list[float] = field(default_factory=list)  # /10
     off_prod: list[float] = field(default_factory=list)  # /10
     run_tm: float = 0.0  # minutos
@@ -114,6 +120,8 @@ def week_key(day: str, week_start: int = WEEK_START) -> str:
 
 
 def period_key(period: str, day: str, week_start: int = WEEK_START) -> str:
+    if period == "shift":
+        return day
     if period == "day":
         return day
     if period == "week":
@@ -174,7 +182,10 @@ def aggregate_records(
             continue
         if min_effic and rec.effic() < min_effic:
             continue
-        day = (day_of or {}).get(id(rec)) or rec.day
+        if period == "shift":
+            day = rec.shift_id or rec.day
+        else:
+            day = (day_of or {}).get(id(rec)) or rec.day
         if day is None:
             raise ValueError("registro sem data; informe day_of")
         key = (period_key(period, day, week_start), rec.mac_name, rec.mac_type,
@@ -251,6 +262,7 @@ def _as_record(row: DailyRaw, mac_name: str, mac_type: str) -> RawRecord:
         s_ct=tuple(row.s_ct or []),
         s_tm=tuple(row.s_tm or []),
         day=row.day,
+        shift_id=row.shift_id,
     )
 
 
@@ -306,6 +318,8 @@ class AggRecord:
     lh_ct: tuple[int, ...] = ()
     lh_tm: tuple[float, ...] = ()
     day: Optional[str] = None  # YYYY.MM.DD (de shift_id)
+    shift_id: Optional[str] = None  # YYYY.MM.DD.n (período "shift")
+    operator_name: Optional[str] = None  # modo operador
 
     def effic(self) -> float:
         return effic(self.run_tm, self.stop_ttm)
@@ -332,6 +346,7 @@ def _agg_record(row: AggShift, mac_name: str, mac_type: str) -> AggRecord:
         lh_ct=tuple(row.lh_ct or []),
         lh_tm=tuple(row.lh_tm or []),
         day=shift_id[:10] or None,
+        shift_id=shift_id or None,
     )
 
 
@@ -359,6 +374,74 @@ def load_agg_records(
     return [_agg_record(row, name, mac_type) for row, name, mac_type in db.execute(stmt)]
 
 
+def _operator_record(
+    row: OperatorDaily, mac_name: str, mac_type: str, operator_name: str
+) -> AggRecord:
+    """`operator_daily` → `AggRecord` (12 categorias via `get_detail_stop`)."""
+    seisan = (row.seisan or {}).get("seisan", [])
+    style = beam = ubeam = None
+    if row.raw_line:
+        parsed = parse_shift_line(row.raw_line)
+        if parsed is not None:
+            style, beam, ubeam = parsed.style, parsed.beam, parsed.ubeam
+    detail_ct = get_detail_stop(mac_type, _padded(row.s_ct, mac_type))
+    detail_tm = get_detail_stop(mac_type, _padded(row.s_tm, mac_type))
+    return AggRecord(
+        mac_name=mac_name,
+        mac_type=mac_type,
+        style=style or None,
+        beam=beam or None,
+        ubeam=ubeam or None,
+        seisan=tuple(round(v / 10.0, 1) for v in seisan[:3]),
+        off_prod=(0.0, 0.0, 0.0),
+        run_tm=(row.run_tm or 0) / 60.0,
+        stop_ttm=(row.stop_ttm or 0) / 60.0,
+        stop_ct=tuple(detail_ct["stop_ct"]),
+        stop_tm=tuple(round(v / 60.0, 3) for v in detail_tm["stop_ct"]),
+        wf1_ct=tuple(detail_ct["wf1"]),
+        wf1_tm=tuple(round(v / 60.0, 3) for v in detail_tm["wf1"]),
+        wf2_ct=tuple(detail_ct["wf2"]),
+        wf2_tm=tuple(round(v / 60.0, 3) for v in detail_tm["wf2"]),
+        lh_ct=tuple(detail_ct["lh"]),
+        lh_tm=tuple(round(v / 60.0, 3) for v in detail_tm["lh"]),
+        day=row.day,
+        operator_name=operator_name,
+    )
+
+
+def load_operator_records(
+    db: Session,
+    *,
+    day_from: Optional[str] = None,
+    day_to: Optional[str] = None,
+    mac_name: Optional[str] = None,
+    operator_name: Optional[str] = None,
+) -> list[AggRecord]:
+    """Carrega `operator_daily` (join `machines`/`operators`) como `AggRecord`s
+    com `operator_name` para agregação no modo operador.
+
+    Sem granularidade de turno (uma linha por tear × operador × dia).
+    """
+    stmt = (
+        select(OperatorDaily, Machine.mac_name, Machine.mac_type, Operator.name)
+        .join(Machine, Machine.id == OperatorDaily.machine_id)
+        .join(Operator, Operator.id == OperatorDaily.operator_id)
+    )
+    if mac_name:
+        stmt = stmt.where(Machine.mac_name == mac_name)
+    if operator_name:
+        stmt = stmt.where(Operator.name == operator_name)
+    if day_from:
+        stmt = stmt.where(OperatorDaily.day >= day_from)
+    if day_to:
+        stmt = stmt.where(OperatorDaily.day <= day_to)
+    stmt = stmt.order_by(OperatorDaily.day, Operator.name, Machine.mac_name)
+    return [
+        _operator_record(row, name, mac_type, ope_name)
+        for row, name, mac_type, ope_name in db.execute(stmt)
+    ]
+
+
 @dataclass
 class _AggAcc:
     mac_name: str
@@ -366,6 +449,7 @@ class _AggAcc:
     style: Optional[str]
     beam: Optional[str]
     ubeam: Optional[str]
+    operator_name: str = ""
     seisan: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
     off_prod: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
     run_tm: float = 0.0
@@ -397,22 +481,38 @@ def aggregate_agg_records(
     min_effic: float = 0.0,
     unit: int = UNIT_PICK,
     beam_type: int = 1,
+    group_by: str = "loom",
 ) -> list[PeriodRow]:
-    """Agrega `agg_shift` por período (soma as 12 categorias, sem médias)."""
+    """Agrega `agg_shift` por período (soma as 12 categorias, sem médias).
+
+    ``group_by="loom"`` agrupa por ``(mac_name, mac_type, style, beam, ubeam)``;
+    ``group_by="operator"`` agrupa por ``(período, operator_name)``.
+    """
+    if group_by not in ("loom", "operator"):
+        raise ValueError(f"agrupamento inválido: {group_by}")
     accs: dict[tuple, _AggAcc] = {}
     for rec in records:
         if rec.run_tm < min_run_tm:
             continue
         if min_effic and rec.effic() < min_effic:
             continue
-        day = rec.day
+        if period == "shift":
+            day = rec.shift_id or rec.day
+        else:
+            day = rec.day
         if day is None:
             raise ValueError("registro sem data (shift_id)")
-        key = (period_key(period, day, week_start), rec.mac_name, rec.mac_type,
-               rec.style, rec.beam, rec.ubeam)
+        base = period_key(period, day, week_start)
+        if group_by == "operator":
+            key = (base, rec.operator_name or "")
+        else:
+            key = (base, rec.mac_name, rec.mac_type, rec.style, rec.beam, rec.ubeam)
         acc = accs.get(key)
         if acc is None:
-            acc = _AggAcc(rec.mac_name, rec.mac_type, rec.style, rec.beam, rec.ubeam)
+            acc = _AggAcc(
+                rec.mac_name, rec.mac_type, rec.style, rec.beam, rec.ubeam,
+                operator_name=rec.operator_name or "",
+            )
             accs[key] = acc
         for i, v in enumerate(rec.seisan[:3]):
             acc.seisan[i] += v
@@ -444,6 +544,7 @@ def aggregate_agg_records(
                 style=acc.style,
                 beam=acc.beam,
                 ubeam=acc.ubeam,
+                operator=acc.operator_name or None,
                 seisan=seisan_final,
                 off_prod=off_final,
                 run_tm=run_min,
@@ -477,15 +578,30 @@ def report(
     unit: int = UNIT_PICK,
     beam_type: int = 1,
     source: str = "agg",
+    mode: str = "shift",
 ) -> list[PeriodRow]:
     """Agrega por período (filtra por `key`/data/tear).
 
     ``source="agg"`` (default) lê `agg_shift`, retido por 12 meses; ``"raw"``
-    lê `daily_raw` (bruto).
+    lê `daily_raw` (bruto). ``mode="operator"`` agrega `operator_daily` por
+    operador (sem granularidade de turno); ``mode="shift"`` é tear/estilo.
     """
     if period not in PERIODS:
         raise ValueError(f"período inválido: {period}")
-    if source == "agg":
+    if mode == "operator" and period == "shift":
+        raise ValueError("modo operador não tem granularidade de turno")
+    if mode == "operator":
+        rows = aggregate_agg_records(
+            load_operator_records(db, day_from=day_from, day_to=day_to, mac_name=mac_name),
+            period,
+            week_start=week_start,
+            min_run_tm=min_run_tm,
+            min_effic=min_effic,
+            unit=unit,
+            beam_type=beam_type,
+            group_by="operator",
+        )
+    elif source == "agg":
         rows = aggregate_agg_records(
             load_agg_records(db, day_from=day_from, day_to=day_to, mac_name=mac_name),
             period,
@@ -494,6 +610,7 @@ def report(
             min_effic=min_effic,
             unit=unit,
             beam_type=beam_type,
+            group_by="loom",
         )
     elif source == "raw":
         rows = aggregate_records(

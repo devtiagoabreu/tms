@@ -7,8 +7,9 @@ Espelha os CSVs/planilhas do legado:
 - ``shift/stopanalysis.cgi``: colunas escolhidas pelo ``selitem`` (``report_prefs``)
   e coluna ``UNSELECT`` com o que não foi selecionado.
 
-Modo loom/style (o legado também tem modo operador; não implementado aqui) e
-períodos day/week/month. As taxas são recalculadas por hora de operação
+Modo tear/estilo (``mode="shift"``) e operador (``mode="operator"``, agrega
+`operator_daily` por operador; sem granularidade de turno) e períodos
+shift/day/week/month. As taxas são recalculadas por hora de operação
 (cph) e por dia (cpday = cph × 24); o legado deixava essas células em branco
 para o Excel completar.
 """
@@ -22,8 +23,8 @@ from tms.core.formulas import UNIT_NAMES, UNIT_PICK
 from tms.reporting.periods import PeriodRow
 
 # period_type do legado: shift=0, date=1, week=2, month=3
-PERIOD_TYPE = {"day": 1, "week": 2, "month": 3}
-PERIOD_LABEL = {"day": "DATE", "week": "WEEK", "month": "MONTH"}
+PERIOD_TYPE = {"shift": 0, "day": 1, "week": 2, "month": 3}
+PERIOD_LABEL = {"shift": "SHIFT", "day": "DATE", "week": "WEEK", "month": "MONTH"}
 
 TITLE_ITEM = (
     "WARP_TOP", "WARP", "FALS", "LENO_L", "LENO_R", "WEFT",
@@ -66,6 +67,12 @@ EFFICIENCY_COLUMNS = (
     "WEFT&COUNT", "WEFT_RATE&CPH", "WEFT_RATE&CPDAY",
 )
 
+OPERATOR_COLUMNS = (
+    "OPERATOR", "EFFIC&PERCENT", "RUN&MINUTE", "STOP&MINUTE",
+    "WARP&COUNT", "WARP_RATE&CPH", "WARP_RATE&CPDAY",
+    "WEFT&COUNT", "WEFT_RATE&CPH", "WEFT_RATE&CPDAY",
+)
+
 
 def warp_weft_counts(row: PeriodRow) -> tuple[int, int]:
     """``warp_ct`` e ``weft_ct`` como em `efficiency.pm`."""
@@ -74,14 +81,17 @@ def warp_weft_counts(row: PeriodRow) -> tuple[int, int]:
     return warp, ct[5]
 
 
-def efficiency_screen(rows: Sequence[PeriodRow], period: str = "day") -> Screen:
+def efficiency_screen(
+    rows: Sequence[PeriodRow], period: str = "day", mode: str = "shift"
+) -> Screen:
+    operator = mode == "operator"
     data = []
     for index, row in enumerate(rows, start=1):
         warp, weft = warp_weft_counts(row)
+        ident = [row.operator or ""] if operator else [row.mac_name, row.style or ""]
         data.append([
             index,
-            row.mac_name,
-            row.style or "",
+            *ident,
             round(row.effic, 3),
             round(row.run_tm, 3),
             round(row.stop_ttm, 3),
@@ -92,8 +102,9 @@ def efficiency_screen(rows: Sequence[PeriodRow], period: str = "day") -> Screen:
             _rate(weft, row.run_tm),
             _rate(weft, row.run_tm, per_day=True),
         ])
+    columns = OPERATOR_COLUMNS if operator else EFFICIENCY_COLUMNS
     return Screen(
-        header=[PERIOD_LABEL.get(period, period.upper()), *EFFICIENCY_COLUMNS],
+        header=[PERIOD_LABEL.get(period, period.upper()), *columns],
         rows=data,
         period_type=PERIOD_TYPE.get(period, 0),
     )
@@ -102,15 +113,22 @@ def efficiency_screen(rows: Sequence[PeriodRow], period: str = "day") -> Screen:
 # --------------------------------------------------------------- production --
 
 def production_screen(
-    rows: Sequence[PeriodRow], period: str = "day", unit: int = UNIT_PICK
+    rows: Sequence[PeriodRow],
+    period: str = "day",
+    unit: int = UNIT_PICK,
+    mode: str = "shift",
 ) -> Screen:
+    operator = mode == "operator"
     unit_title = UNIT_NAMES[unit] if 0 <= unit < len(UNIT_NAMES) else UNIT_NAMES[UNIT_PICK]
-    data = [
-        [index, row.mac_name, row.style or "", round(row.production(unit), 1)]
-        for index, row in enumerate(rows, start=1)
-    ]
+    data = []
+    for index, row in enumerate(rows, start=1):
+        ident = [row.operator or ""] if operator else [row.mac_name, row.style or ""]
+        data.append([index, *ident, round(row.production(unit), 1)])
+    columns = ("OPERATOR", f"PRODUCT&{unit_title}") if operator else (
+        "LOOM", "STYLE", f"PRODUCT&{unit_title}"
+    )
     return Screen(
-        header=[PERIOD_LABEL.get(period, period.upper()), "LOOM", "STYLE", f"PRODUCT&{unit_title}"],
+        header=[PERIOD_LABEL.get(period, period.upper()), *columns],
         rows=data,
         period_type=PERIOD_TYPE.get(period, 0),
     )
@@ -228,15 +246,23 @@ def stop_analysis_screen(
     period: str = "day",
     beam_type: int = 1,
     time: bool = False,
+    mode: str = "shift",
 ) -> Screen:
-    """Uma saída de stop-analysis (``time=False`` = contagem, ``True`` = tempo)."""
+    """Uma saída de stop-analysis (``time=False`` = contagem, ``True`` = tempo).
+
+    ``mode="operator"`` troca LOOM/STYLE por OPERATOR (agregado por operador).
+    """
     specs = _stop_analysis_specs(prefs, beam_type)
-    header = [PERIOD_LABEL.get(period, period.upper()), "LOOM", "STYLE"]
+    ident = ["OPERATOR"] if mode == "operator" else ["LOOM", "STYLE"]
+    header = [PERIOD_LABEL.get(period, period.upper()), *ident]
     header += [spec[2] for spec in specs]
 
     data = []
     for index, row in enumerate(rows, start=1):
-        line: list = [index, row.mac_name, row.style or ""]
+        values = [row.operator or ""] if mode == "operator" else [
+            row.mac_name, row.style or ""
+        ]
+        line: list = [index, *values]
         for spec in specs:
             value = _stop_analysis_value(row, spec, time=time)
             line.append(round(value, 3) if time else value)

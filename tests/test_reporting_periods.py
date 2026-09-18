@@ -1,5 +1,7 @@
 from tms.reporting.periods import (
+    AggRecord,
     RawRecord,
+    aggregate_agg_records,
     aggregate_records,
     month_key,
     period_key,
@@ -38,6 +40,55 @@ def test_month_and_week_keys():
     assert week_key("2025.10.01", week_start=1) == "2025.09.29"
     assert period_key("day", "2025.10.01") == "2025.10.01"
     assert period_key("month", "2025.10.01") == "2025.10"
+    assert period_key("shift", "2025.10.01.0") == "2025.10.01.0"
+
+
+def _shift(day, shift_id, seisan_0=0, run=0, stop=0, mac="00001", mac_type="JAT"):
+    s_ct = [0] * 12
+    s_ct[1] = 2
+    return AggRecord(
+        mac_name=mac,
+        mac_type=mac_type,
+        style="2312",
+        beam="123219",
+        ubeam=None,
+        seisan=(seisan_0, 0.0, 0.0),
+        off_prod=(0.0, 0.0, 0.0),
+        run_tm=seisan_0 / 1000 * 3 / 100,  # valor qualquer; só importa ser > 0 p/ filtro
+        stop_ttm=0.0,
+        stop_ct=tuple(s_ct),
+        stop_tm=tuple(0.0 for _ in s_ct),
+        day=day,
+        shift_id=shift_id,
+    )
+
+
+def test_aggregate_shift_groups_by_shift_id():
+    records = [
+        _shift("2025.10.01", "2025.10.01.0", seisan_0=1000),
+        _shift("2025.10.01", "2025.10.01.1", seisan_0=500),
+    ]
+    rows = aggregate_agg_records(records, "shift")
+    assert len(rows) == 2
+    keys = {r.key for r in rows}
+    assert keys == {"2025.10.01.0", "2025.10.01.1"}
+    # o mesmo shift_id soma dentro do próprio turno
+    rows2 = aggregate_agg_records([records[0], records[0]], "shift")
+    assert len(rows2) == 1
+    assert rows2[0].key == "2025.10.01.0"
+
+
+def test_aggregate_agg_operator_groups_by_operator():
+    from dataclasses import replace
+
+    base = _shift("2025.10.01", "2025.10.01.0", seisan_0=1000)
+    a1 = replace(base)
+    a2 = replace(base, operator_name="B")
+    rows = aggregate_agg_records([a1, a2], "day", group_by="operator")
+    assert len(rows) == 2
+    assert {r.operator for r in rows} == {None, "B"}
+    rows2 = aggregate_agg_records([a1, a1], "day", group_by="operator")
+    assert len(rows2) == 1
 
 
 def test_aggregate_day_sums_and_recomputes():

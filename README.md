@@ -77,7 +77,7 @@ Somente leitura, paginada (`limit` ≤ 1000, `offset`) e filtrável por tear/dia
 | `GET\|PUT /api/settings/shift` | escala de turnos (`system_set.txt`) |
 | `GET\|PUT /api/settings/report-prefs` | itens de relatório (`selitem.txt`) |
 | `GET\|PUT /api/settings/value/{key}` | chave avulsa (`language`, `scanner_ip`, `memcard`…) |
-| `GET /api/screens/{efficiency\|production\|stop-analysis}` | `period`, `key`, `mac_name`, `day_from`, `day_to`, `week_start`, `min_run_tm`, `min_effic` (+ `unit`/`beam_type`) |
+| `GET /api/screens/{efficiency\|production\|stop-analysis}` | `period`, `mode`, `key`, `mac_name`, `day_from`, `day_to`, `week_start`, `min_run_tm`, `min_effic` (+ `unit`/`beam_type`) |
 | `GET /api/screens/{efficiency\|production\|stop-analysis}.csv` | idem; stop-analysis usa `value=count\|time` |
 | `GET /monitor` | dashboard HTML que consome `/api/monitor` (auto-refresh 30s) |
 
@@ -86,7 +86,9 @@ Datas no formato legado `YYYY.MM.DD` (ex.: `2025.10.01`). OpenAPI em `/docs`.
 Relatórios agregam `agg_shift` por `(mac_name, mac_type, style, beam, ubeam)` —
 **soma** contadores/tempos e **recomputa** EFFIC/RPM/total (nunca média de
 taxas), como `TMSDATAfinal.pm`. A semana usa início configurável
-(`week_start`, 0=domingo), não ISO.
+(`week_start`, 0=domingo), não ISO. Período `shift` agrupa por `shift_id`
+(`YYYY.MM.DD.n`); modo `operator` (`mode=operator`) agrega `operator_daily`
+por nome do operador e não tem granularidade de turno.
 
 ## Retenção e reprocessamento (Fase 1)
 
@@ -188,8 +190,10 @@ expandida. Exemplo: as 3 faixas reais de `ipaddress.txt` expandem para 26 IPs.
 
 ## Telas de relatório (Fase 3)
 
-`tms.reporting.screens` reproduz os layouts do legado em modo loom/style
-(períodos `day`/`week`/`month`), expostos em `/api/screens/*` (JSON e `.csv`):
+`tms.reporting.screens` reproduz os layouts do legado em modo tear/estilo —
+`mode=shift` (default) — e modo operador — `mode=operator`, que agrega
+`operator_daily` por operador e troca LOOM/STYLE por OPERATOR —, nos períodos
+`shift`/`day`/`week`/`month`, expostos em `/api/screens/*` (JSON e `.csv`):
 
 | Tela | Origem | Colunas |
 |---|---|---|
@@ -201,3 +205,4 @@ No `stop-analysis`, `count_rows`/`time_rows` (JSON) e `value=count|time` (CSV)
 dão, respectivamente, contagem e minutos. O `UNSELECT` soma tudo o que não foi
 selecionado, e `WARP_TOP` só aparece quando configurado no selitem. As taxas de
 parada são recalculadas por hora de operação (`cph`) e por dia (`cph × 24`).
+`mode=operator` + `period=shift` é rejeitado (`operator_daily` não tem turno).
