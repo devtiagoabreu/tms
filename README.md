@@ -77,8 +77,8 @@ Somente leitura, paginada (`limit` ≤ 1000, `offset`) e filtrável por tear/dia
 | `GET\|PUT /api/settings/shift` | escala de turnos (`system_set.txt`) |
 | `GET\|PUT /api/settings/report-prefs` | itens de relatório (`selitem.txt`) |
 | `GET\|PUT /api/settings/value/{key}` | chave avulsa (`language`, `scanner_ip`, `memcard`…) |
-| `GET /api/screens/{efficiency\|production\|stop-analysis}` | `period`, `mode`, `key`, `mac_name`, `day_from`, `day_to`, `week_start`, `min_run_tm`, `min_effic` (+ `unit`/`beam_type`) |
-| `GET /api/screens/{efficiency\|production\|stop-analysis}.csv` | idem; stop-analysis usa `value=count\|time` |
+| `GET /api/screens/{efficiency\|production\|stop-analysis\|shiftreport\|stylereport}` | `period`, `mode`, `key`, `mac_name`, `day_from`, `day_to`, `week_start`, `min_run_tm`, `min_effic` (+ `unit`/`beam_type`; shiftreport tem `sel=loom\|style`; sem `period` usa o selitem) |
+| `GET /api/screens/{efficiency\|production\|stop-analysis\|shiftreport\|stylereport}.csv` | idem; stop-analysis usa `value=count\|time` |
 | `GET /monitor` | dashboard HTML que consome `/api/monitor` (auto-refresh 30s) |
 
 Datas no formato legado `YYYY.MM.DD` (ex.: `2025.10.01`). OpenAPI em `/docs`.
@@ -200,9 +200,18 @@ expandida. Exemplo: as 3 faixas reais de `ipaddress.txt` expandem para 26 IPs.
 | `efficiency` | `shift/efficiency.pm` | LOOM, STYLE, EFFIC%, RUN, STOP, WARP count + rate cph/cpday, WEFT count + rate cph/cpday |
 | `production` | `shift/production.pm` | LOOM, STYLE, PRODUCT (`seisan[unit]+off_prod[unit]`) |
 | `stop-analysis` | `shift/stopanalysis.cgi` | colunas escolhidas pelo `report_prefs` (selitem) + `UNSELECT` |
+| `shiftreport` | `shift/shiftreport.pm` | ident (LOOM/STYLE/MAC_TYPE, `sel`), item2 (Top Beam/Beam/RPM/Effic), RUN/STOP/PROD, paradas do selitem, UNSELECT/UNSELECT2, totais e detalhe WF/CC/Leno |
+| `stylereport` | `shift/stylereport.cgi` | total por estilo (agrega por estilo; `LOOM_COUNT` = nº de teares distintos) |
 
 No `stop-analysis`, `count_rows`/`time_rows` (JSON) e `value=count|time` (CSV)
 dão, respectivamente, contagem e minutos. O `UNSELECT` soma tudo o que não foi
 selecionado, e `WARP_TOP` só aparece quando configurado no selitem. As taxas de
 parada são recalculadas por hora de operação (`cph`) e por dia (`cph × 24`).
 `mode=operator` + `period=shift` é rejeitado (`operator_daily` não tem turno).
+
+O `shiftreport`/`stylereport` seguem o selitem (`report_prefs`): item2/item/item3/
+detail/color, `beam_type` e `unit`. RPM/EFFIC e as taxas (`RATE_PH` =
+paradas ÷ horas de operação, `RATE_PDAY = RATE_PH × 24`, `RATE_PP` = paradas ÷
+produção da unidade) são calculados no servidor — o Excel do legado deixava
+essas células em branco. Sem o `period` explícito, ambos usam o `period` do
+selitem (default `shift`). `MAC_TYPE` aparece só quando há JAT e LWT na base.

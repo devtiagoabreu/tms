@@ -294,3 +294,139 @@ def test_screens_operator_shift_conflict(client):
         params={"period": "shift", "mode": "operator"},
     )
     assert response.status_code == 400
+
+
+def test_machine_aris(session):
+    """Fixture tem JAT (00001/00002) e LWT (00005)."""
+    assert reporting.machine_aris(session) == (True, True)
+
+
+# -------------------------------------------------------------- shiftreport --
+
+def test_shiftreport_screen(session):
+    rows = reporting.report(session, "day", key="2025.10.01")
+    prefs = copy.deepcopy(cfg.SELITEM_DEFAULTS)
+    screen = screens.shiftreport_screen(rows, prefs, period="day")
+    assert screen.header[0] == "DATE"
+    assert all(len(line) == len(screen.header) for line in screen.rows)
+    headers = screen.header
+    assert headers[1:4] == ["LOOM", "MAC_TYPE", "STYLE"]  # JAT + LWT presentes
+    assert "WARP&COUNT" in headers and "WARP&RATE_PP" in headers
+    assert "TOTAL&COUNT" in headers and "UNSELECT&COUNT" in headers
+
+    row = rows[0]
+    line = screen.rows[0]
+    assert line[headers.index("WARP&COUNT")] == row.stop_ct[1]
+    assert line[headers.index("WEFT&COUNT")] == row.stop_ct[5]
+    assert line[headers.index("TOTAL&COUNT")] == row.total_ct(1)
+    assert line[headers.index("TOTAL&MINUTE")] == round(
+        sum(row.stop_tm[:12]) - row.stop_tm[0], 3
+    )
+    assert line[headers.index("WARP&MINUTE")] == round(row.stop_tm[1], 3)
+    assert line[headers.index("PRODUCT&PICK")] == round(row.seisan[0], 3)
+    hours = row.run_tm / 60.0
+    assert line[headers.index("WARP&RATE_PH")] == (
+        round(row.stop_ct[1] / hours, 3) if hours > 0 else 0.0
+    )
+    assert line[headers.index("WF1&COLOR1&COUNT")] == row.wf1_ct[0]
+    assert line[headers.index("LENO_L&COUNT")] == row.stop_ct[3]
+
+
+def test_shiftreport_sel_style_orders_ident(session):
+    rows = reporting.report(session, "day", key="2025.10.01")
+    prefs = copy.deepcopy(cfg.SELITEM_DEFAULTS)
+    screen = screens.shiftreport_screen(rows, prefs, period="day", sel="style")
+    assert screen.header[1:4] == ["STYLE", "LOOM", "MAC_TYPE"]
+
+
+def test_shiftreport_single_machine_type_no_mac_type(session):
+    rows = reporting.report(session, "day", key="2025.10.01")
+    prefs = copy.deepcopy(cfg.SELITEM_DEFAULTS)
+    screen = screens.shiftreport_screen(rows, prefs, period="day", jat_ari=True, lwt_ari=False)
+    assert screen.header[1:3] == ["LOOM", "STYLE"]
+    assert "MAC_TYPE" not in screen.header
+
+
+def test_shiftreport_operator_mode(op_session):
+    rows = reporting.report(op_session, "day", key="2025.10.01", mode="operator")
+    prefs = copy.deepcopy(cfg.SELITEM_DEFAULTS)
+    screen = screens.shiftreport_screen(rows, prefs, period="day", mode="operator")
+    assert screen.header[1] == "OPERATOR"
+    assert "LOOM" not in screen.header
+    assert "MAC_TYPE" not in screen.header
+    assert {line[1] for line in screen.rows} == {"Ope1", "Ope2"}
+
+
+def test_shiftreport_warp_top_with_beam_type_2(session):
+    """beam_type=2 seleciona WARP_TOP (sem UNSELECT incluir warp top único)."""
+    rows = reporting.report(session, "day", key="2025.10.01")
+    prefs = copy.deepcopy(cfg.SELITEM_DEFAULTS)
+    prefs["item"][0] = 1
+    screen = screens.shiftreport_screen(rows, prefs, period="day", beam_type=2)
+    assert "WARP_TOP&COUNT" in screen.header
+
+
+# -------------------------------------------------------------- stylereport --
+
+def test_stylereport_screen(session):
+    rows = reporting.report(session, "day", key="2025.10.01", mode="style")
+    assert len(rows) == 2
+    prefs = copy.deepcopy(cfg.SELITEM_DEFAULTS)
+    screen = screens.stylereport_screen(rows, prefs, period="day")
+    assert screen.header[0] == "DATE"
+    assert screen.header[1:5] == ["LOOM", "SORTKEY", "STYLE", "LOOM_COUNT"]
+    assert all(len(line) == len(screen.header) for line in screen.rows)
+
+    row = rows[0]
+    line = screen.rows[0]
+    assert line[1] == "" and line[2] == ""  # LOOM/SORTKEY vazios no agregado
+    assert line[3] == row.style
+    assert line[4] == row.loom_count == 1  # 1 tear por estilo no fixture
+
+
+def test_shiftreport_endpoint(client):
+    response = client.get("/api/screens/shiftreport", params={"period": "day", "key": "2025.10.01"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["period_type"] == 1
+    assert body["header"][1:4] == ["LOOM", "MAC_TYPE", "STYLE"]
+    assert len(body["rows"]) == 2
+
+    csv_response = client.get(
+        "/api/screens/shiftreport.csv", params={"period": "day", "key": "2025.10.01"}
+    )
+    assert csv_response.status_code == 200
+    assert csv_response.text.splitlines()[0].startswith("DATE,LOOM,MAC_TYPE,STYLE")
+
+
+def test_shiftreport_shift_period_endpoint(client):
+    response = client.get("/api/screens/shiftreport", params={"period": "shift", "key": "2025.10.01.0"})
+    assert response.status_code == 200
+    assert response.json()["header"][0] == "SHIFT"
+
+
+def test_shiftreport_default_period_from_prefs(client):
+    """Sem `period`, usa o selitem (default "shift")."""
+    response = client.get("/api/screens/shiftreport")
+    assert response.status_code == 200
+    assert response.json()["header"][0] == "SHIFT"
+
+
+def test_shiftreport_operator_shift_conflict(client):
+    assert client.get(
+        "/api/screens/shiftreport", params={"period": "shift", "mode": "operator"}
+    ).status_code == 400
+
+
+def test_stylereport_endpoint(client):
+    response = client.get("/api/screens/stylereport", params={"period": "day", "key": "2025.10.01"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["header"][1:5] == ["LOOM", "SORTKEY", "STYLE", "LOOM_COUNT"]
+    assert len(body["rows"]) == 2
+
+    csv_response = client.get(
+        "/api/screens/stylereport.csv", params={"period": "day", "key": "2025.10.01"}
+    )
+    assert csv_response.status_code == 200
+    assert csv_response.text.splitlines()[0].startswith("DATE,LOOM,SORTKEY,STYLE,LOOM_COUNT")

@@ -94,6 +94,7 @@ class PeriodRow:
     wf2_tm: list[float] = field(default_factory=list)
     lh_ct: list[int] = field(default_factory=list)
     lh_tm: list[float] = field(default_factory=list)
+    loom_count: int = 0  # nº de teares distintos (stylereport)
 
     def production(self, unit: int = UNIT_PICK) -> float:
         return production(self.seisan, self.off_prod, unit)
@@ -462,6 +463,7 @@ class _AggAcc:
     wf2_tm: list[float] = field(default_factory=list)
     lh_ct: list[int] = field(default_factory=list)
     lh_tm: list[float] = field(default_factory=list)
+    machines: set[str] = field(default_factory=set)
 
 
 def _sum_into(acc: list, values: Iterable, size: int, *, as_float: bool = False) -> list:
@@ -486,9 +488,11 @@ def aggregate_agg_records(
     """Agrega `agg_shift` por período (soma as 12 categorias, sem médias).
 
     ``group_by="loom"`` agrupa por ``(mac_name, mac_type, style, beam, ubeam)``;
-    ``group_by="operator"`` agrupa por ``(período, operator_name)``.
+    ``group_by="operator"`` agrupa por ``(período, operator_name)``;
+    ``group_by="style"`` agrupa por ``(período, style)`` (stylereport) e guarda
+    em `loom_count` o nº de teares distintos.
     """
-    if group_by not in ("loom", "operator"):
+    if group_by not in ("loom", "operator", "style"):
         raise ValueError(f"agrupamento inválido: {group_by}")
     accs: dict[tuple, _AggAcc] = {}
     for rec in records:
@@ -505,6 +509,8 @@ def aggregate_agg_records(
         base = period_key(period, day, week_start)
         if group_by == "operator":
             key = (base, rec.operator_name or "")
+        elif group_by == "style":
+            key = (base, rec.style or "")
         else:
             key = (base, rec.mac_name, rec.mac_type, rec.style, rec.beam, rec.ubeam)
         acc = accs.get(key)
@@ -514,6 +520,7 @@ def aggregate_agg_records(
                 operator_name=rec.operator_name or "",
             )
             accs[key] = acc
+        acc.machines.add(rec.mac_name)
         for i, v in enumerate(rec.seisan[:3]):
             acc.seisan[i] += v
         for i, v in enumerate(rec.off_prod[:3]):
@@ -559,6 +566,7 @@ def aggregate_agg_records(
                 wf2_tm=[round(v, 3) for v in acc.wf2_tm],
                 lh_ct=list(acc.lh_ct),
                 lh_tm=[round(v, 3) for v in acc.lh_tm],
+                loom_count=len(acc.machines),
             )
         )
     return rows
@@ -584,7 +592,8 @@ def report(
 
     ``source="agg"`` (default) lê `agg_shift`, retido por 12 meses; ``"raw"``
     lê `daily_raw` (bruto). ``mode="operator"`` agrega `operator_daily` por
-    operador (sem granularidade de turno); ``mode="shift"`` é tear/estilo.
+    operador (sem granularidade de turno); ``mode="style"`` agrega `agg_shift`
+    por estilo (stylereport); ``mode="shift"`` é tear/estilo.
     """
     if period not in PERIODS:
         raise ValueError(f"período inválido: {period}")
@@ -600,6 +609,19 @@ def report(
             unit=unit,
             beam_type=beam_type,
             group_by="operator",
+        )
+    elif mode == "style":
+        if source != "agg":
+            raise ValueError("modo estilo usa agg_shift (source='agg')")
+        rows = aggregate_agg_records(
+            load_agg_records(db, day_from=day_from, day_to=day_to, mac_name=mac_name),
+            period,
+            week_start=week_start,
+            min_run_tm=min_run_tm,
+            min_effic=min_effic,
+            unit=unit,
+            beam_type=beam_type,
+            group_by="style",
         )
     elif source == "agg":
         rows = aggregate_agg_records(
@@ -627,3 +649,16 @@ def report(
     if key:
         rows = [r for r in rows if r.key == key]
     return rows
+
+
+def machine_aris(db: Session) -> tuple[bool, bool]:
+    """Tipos de tear presentes em `machines`: ``(existe JAT?, existe LWT?)``.
+
+    O legado decide entre JAT/LWT misto ou único pelo ``jat_ari``/``lwt_ari``.
+    """
+    present = set()
+    for (mac_type,) in db.execute(
+        select(Machine.mac_type).where(Machine.mac_type.is_not(None))
+    ):
+        present.add(mac_type.upper())
+    return "JAT" in present, "LWT" in present

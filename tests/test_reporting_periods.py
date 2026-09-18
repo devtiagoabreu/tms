@@ -91,6 +91,34 @@ def test_aggregate_agg_operator_groups_by_operator():
     assert len(rows2) == 1
 
 
+def test_aggregate_agg_style_groups_by_style():
+    from dataclasses import replace
+
+    base = _shift("2025.10.01", "2025.10.01.0", seisan_0=1000)
+    other = replace(base, mac_name="00002", style="1820")
+    rows = aggregate_agg_records([base, other], "day", group_by="style")
+    assert len(rows) == 2
+    assert {r.style for r in rows} == {"2312", "1820"}
+    assert {r.loom_count for r in rows} == {1}
+    # dois teares do mesmo estilo somam e contam looms distintos
+    same_style = replace(base, mac_name="00002")
+    rows2 = aggregate_agg_records([base, same_style, same_style], "day", group_by="style")
+    assert len(rows2) == 1
+    assert rows2[0].style == "2312"
+    assert rows2[0].loom_count == 2
+    assert rows2[0].seisan[0] == 3000.0
+
+
+def test_aggregate_style_none_style_uses_empty():
+    from dataclasses import replace
+
+    base = replace(_shift("2025.10.01", "2025.10.01.0", seisan_0=1000), style=None)
+    rows = aggregate_agg_records([base, base], "day", group_by="style")
+    assert len(rows) == 1
+    assert rows[0].style is None
+    assert rows[0].loom_count == 1
+
+
 def test_aggregate_day_sums_and_recomputes():
     records = [
         _raw("2025.10.01", seisan_0=1000, run=3600, stop=3600, s_ct0=2, s_tm0=120),

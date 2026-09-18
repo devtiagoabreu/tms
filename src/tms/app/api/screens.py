@@ -1,7 +1,10 @@
-"""Telas de relatório (Fase 3): efficiency, production e stop-analysis.
+"""Telas de relatório (Fase 3): efficiency, production, stop-analysis,
+shiftreport e stylereport.
 
 Endpoints JSON e CSV nos modos tear/estilo (``mode=shift``) e operador
-(``mode=operator``); períodos shift/day/week/month.
+(``mode=operator``); períodos shift/day/week/month. O stylereport agrega
+por estilo (``mode=style``) e o shiftreport segue sel item2/item/item3/detail
+das preferências (``report_prefs``).
 """
 
 from __future__ import annotations
@@ -24,6 +27,7 @@ router = APIRouter(prefix="/api/screens", tags=["screens"])
 Period = Query("day", description="shift | day | week | month")
 WeekStart = Query(WEEK_START, ge=0, le=6)
 Mode = Query("shift", pattern="^(shift|operator)$")
+Sel = Query("loom", pattern="^(loom|style)$")
 
 
 def _rows(
@@ -209,3 +213,131 @@ def stop_analysis_csv(
         rows, prefs, period=period, beam_type=beam_type, time=(value == "time"), mode=mode
     )
     return _csv_response(screen, f"tms-stop-analysis-{value}.csv")
+
+
+# -------------------------------------------------------------- shiftreport --
+
+def _shiftreport_screen(db, rows, *, period, mode, sel, beam_type, unit) -> screens.Screen:
+    prefs = cfg.get_report_prefs(db)
+    if period is None:
+        period = prefs["period"]
+    if beam_type is None:
+        beam_type = prefs["beam_type"]
+    if unit is None:
+        unit = prefs["unit"]
+    jat_ari, lwt_ari = reporting.machine_aris(db)
+    return screens.shiftreport_screen(
+        rows, prefs, period=period, sel=sel, beam_type=beam_type, unit=unit,
+        mode=mode, jat_ari=jat_ari, lwt_ari=lwt_ari,
+    )
+
+
+@router.get("/shiftreport")
+def shiftreport(
+    db: Session = Depends(get_db),
+    period: str | None = None,
+    mode: str = Mode,
+    sel: str = Sel,
+    key: str | None = None,
+    mac_name: str | None = None,
+    day_from: str | None = None,
+    day_to: str | None = None,
+    week_start: int = WeekStart,
+    min_run_tm: float = Query(0.0, ge=0),
+    min_effic: float = Query(0.0, ge=0, le=100),
+    beam_type: int | None = Query(None, ge=1, le=2),
+    unit: int | None = Query(None, ge=0, le=2),
+) -> dict:
+    period = period or cfg.get_report_prefs(db)["period"]
+    rows = _rows(db, period, key=key, mac_name=mac_name, day_from=day_from,
+                 day_to=day_to, week_start=week_start, min_run_tm=min_run_tm,
+                 min_effic=min_effic, mode=mode)
+    return _screen_out(_shiftreport_screen(
+        db, rows, period=period, mode=mode, sel=sel, beam_type=beam_type, unit=unit)
+    )
+
+
+@router.get("/shiftreport.csv")
+def shiftreport_csv(
+    db: Session = Depends(get_db),
+    period: str | None = None,
+    mode: str = Mode,
+    sel: str = Sel,
+    key: str | None = None,
+    mac_name: str | None = None,
+    day_from: str | None = None,
+    day_to: str | None = None,
+    week_start: int = WeekStart,
+    min_run_tm: float = Query(0.0, ge=0),
+    min_effic: float = Query(0.0, ge=0, le=100),
+    beam_type: int | None = Query(None, ge=1, le=2),
+    unit: int | None = Query(None, ge=0, le=2),
+) -> Response:
+    period = period or cfg.get_report_prefs(db)["period"]
+    rows = _rows(db, period, key=key, mac_name=mac_name, day_from=day_from,
+                 day_to=day_to, week_start=week_start, min_run_tm=min_run_tm,
+                 min_effic=min_effic, mode=mode)
+    return _csv_response(_shiftreport_screen(
+        db, rows, period=period, mode=mode, sel=sel, beam_type=beam_type, unit=unit),
+        "tms-shiftreport.csv")
+
+
+# -------------------------------------------------------------- stylereport --
+
+def _stylereport_screen(db, rows, *, period, beam_type, unit) -> screens.Screen:
+    prefs = cfg.get_report_prefs(db)
+    if period is None:
+        period = prefs["period"]
+    if beam_type is None:
+        beam_type = prefs["beam_type"]
+    if unit is None:
+        unit = prefs["unit"]
+    return screens.stylereport_screen(
+        rows, prefs, period=period, beam_type=beam_type, unit=unit,
+    )
+
+
+@router.get("/stylereport")
+def stylereport(
+    db: Session = Depends(get_db),
+    period: str | None = None,
+    key: str | None = None,
+    mac_name: str | None = None,
+    day_from: str | None = None,
+    day_to: str | None = None,
+    week_start: int = WeekStart,
+    min_run_tm: float = Query(0.0, ge=0),
+    min_effic: float = Query(0.0, ge=0, le=100),
+    beam_type: int | None = Query(None, ge=1, le=2),
+    unit: int | None = Query(None, ge=0, le=2),
+) -> dict:
+    period = period or cfg.get_report_prefs(db)["period"]
+    rows = _rows(db, period, key=key, mac_name=mac_name, day_from=day_from,
+                 day_to=day_to, week_start=week_start, min_run_tm=min_run_tm,
+                 min_effic=min_effic, mode="style")
+    return _screen_out(_stylereport_screen(
+        db, rows, period=period, beam_type=beam_type, unit=unit)
+    )
+
+
+@router.get("/stylereport.csv")
+def stylereport_csv(
+    db: Session = Depends(get_db),
+    period: str | None = None,
+    key: str | None = None,
+    mac_name: str | None = None,
+    day_from: str | None = None,
+    day_to: str | None = None,
+    week_start: int = WeekStart,
+    min_run_tm: float = Query(0.0, ge=0),
+    min_effic: float = Query(0.0, ge=0, le=100),
+    beam_type: int | None = Query(None, ge=1, le=2),
+    unit: int | None = Query(None, ge=0, le=2),
+) -> Response:
+    period = period or cfg.get_report_prefs(db)["period"]
+    rows = _rows(db, period, key=key, mac_name=mac_name, day_from=day_from,
+                 day_to=day_to, week_start=week_start, min_run_tm=min_run_tm,
+                 min_effic=min_effic, mode="style")
+    return _csv_response(_stylereport_screen(
+        db, rows, period=period, beam_type=beam_type, unit=unit),
+        "tms-stylereport.csv")
