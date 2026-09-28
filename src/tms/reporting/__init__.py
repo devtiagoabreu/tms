@@ -1,5 +1,11 @@
 """Camada de relatórios/agregações (períodos)."""
 
+from tms.reporting.history import (
+    ShowstyleRow,
+    StopEventRow,
+    load_showstyle_records,
+    load_stop_events,
+)
 from tms.reporting.periods import (
     PERIODS,
     WEEK_START,
@@ -22,8 +28,12 @@ from tms.reporting.screens import (
     efficiency_screen,
     production_screen,
     shiftreport_screen,
+    showstyle_screen,
+    statushistory_screen,
+    stophistory_screen,
     stop_analysis_screen,
     stylereport_screen,
+    svsreport_screen,
 )
 
 __all__ = [
@@ -33,19 +43,27 @@ __all__ = [
     "PeriodRow",
     "RawRecord",
     "Screen",
+    "ShowstyleRow",
+    "StopEventRow",
     "aggregate_agg_records",
     "aggregate_records",
     "efficiency_screen",
     "load_agg_records",
     "load_operator_records",
     "load_records",
+    "load_showstyle_records",
+    "load_stop_events",
     "machine_aris",
     "month_key",
     "period_key",
     "production_screen",
     "report",
     "shiftreport_screen",
+    "showstyle_screen",
+    "statushistory_screen",
+    "stophistory_screen",
     "stop_analysis_screen",
     "stylereport_screen",
+    "svsreport_screen",
     "week_key",
 ]

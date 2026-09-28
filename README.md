@@ -77,8 +77,8 @@ Somente leitura, paginada (`limit` ≤ 1000, `offset`) e filtrável por tear/dia
 | `GET\|PUT /api/settings/shift` | escala de turnos (`system_set.txt`) |
 | `GET\|PUT /api/settings/report-prefs` | itens de relatório (`selitem.txt`) |
 | `GET\|PUT /api/settings/value/{key}` | chave avulsa (`language`, `scanner_ip`, `memcard`…) |
-| `GET /api/screens/{efficiency\|production\|stop-analysis\|shiftreport\|stylereport}` | `period`, `mode`, `key`, `mac_name`, `day_from`, `day_to`, `week_start`, `min_run_tm`, `min_effic` (+ `unit`/`beam_type`; shiftreport tem `sel=loom\|style`; sem `period` usa o selitem) |
-| `GET /api/screens/{efficiency\|production\|stop-analysis\|shiftreport\|stylereport}.csv` | idem; stop-analysis usa `value=count\|time` |
+| `GET /api/screens/{efficiency\|production\|stop-analysis\|shiftreport\|stylereport\|statushistory\|svsreport\|stophistory\|showstyle}` | `period`, `mode`, `key`, `mac_name`, `day_from`, `day_to`, `week_start`, `min_run_tm`, `min_effic` (+ `unit`/`beam_type`; shiftreport tem `sel=loom\|style`; statushistory/svsreport têm `sel_mode=loom\|style` com listas `loom`/`style`; stophistory filtra por datas/tear; showstyle tem `data=shift\|operator`; sem `period` usa o selitem) |
+| `GET /api/screens/{efficiency\|production\|stop-analysis\|shiftreport\|stylereport\|statushistory\|svsreport\|stophistory\|showstyle}.csv` | idem; stop-analysis usa `value=count\|time` |
 | `GET /monitor` | dashboard HTML que consome `/api/monitor` (auto-refresh 30s) |
 
 Datas no formato legado `YYYY.MM.DD` (ex.: `2025.10.01`). OpenAPI em `/docs`.
@@ -202,6 +202,10 @@ expandida. Exemplo: as 3 faixas reais de `ipaddress.txt` expandem para 26 IPs.
 | `stop-analysis` | `shift/stopanalysis.cgi` | colunas escolhidas pelo `report_prefs` (selitem) + `UNSELECT` |
 | `shiftreport` | `shift/shiftreport.pm` | ident (LOOM/STYLE/MAC_TYPE, `sel`), item2 (Top Beam/Beam/RPM/Effic), RUN/STOP/PROD, paradas do selitem, UNSELECT/UNSELECT2, totais e detalhe WF/CC/Leno |
 | `stylereport` | `shift/stylereport.cgi` | total por estilo (agrega por estilo; `LOOM_COUNT` = nº de teares distintos) |
+| `statushistory` | `shift/statushistory.cgi` | histórico de estado por tear/estilo (`sel_mode`), mesmas colunas do `efficiency` |
+| `svsreport` | `shift2/svsreport.cgi` | STYLE, LOOM, período, RUN/STOP, PRODUCT&PICK, EFFIC%, RPM, WARP, WF1, WF2, OTHER, TOTAL (+ WARP_TOP/WARP_BOTTOM e `WF1/WF2&COLORn`) |
+| `stophistory` | `shift/stophistory2.cgi` | ORDER, DATE, LOOM, STOP_TIME_POINT, RUN_TIME_POINT, STOP_CODE, STOP_CAUSE (filtro por `day_from`/`day_to`/`mac_name`) |
+| `showstyle` | `edit/showstyle2.cgi` | matriz por turno/dia (`data=shift` -> chave `YYYY.MM.DD.n`; `data=operator` -> dia + operador), colunas cronadas por `sel_mode` (loom/style/`mac+&+operador`) |
 
 No `stop-analysis`, `count_rows`/`time_rows` (JSON) e `value=count|time` (CSV)
 dão, respectivamente, contagem e minutos. O `UNSELECT` soma tudo o que não foi
@@ -215,3 +219,16 @@ paradas ÷ horas de operação, `RATE_PDAY = RATE_PH × 24`, `RATE_PP` = paradas
 produção da unidade) são calculados no servidor — o Excel do legado deixava
 essas células em branco. Sem o `period` explícito, ambos usam o `period` do
 selitem (default `shift`). `MAC_TYPE` aparece só quando há JAT e LWT na base.
+
+O `statushistory` é idêntico ao `efficiency` (colunas e taxas), apenas com o
+filtro `sel_mode` (por lista de teares ou estilos) como no legado. O `svsreport`
+recalcula EFFIC/RPM e as colunas de cor no servidor:
+`WARP = stop_ct[0] + stop_ct[1]`, `WF1/WF2` são as somas das contagens
+`wf1_ct`/`wf2_ct`, `OTHER = stop_ct[2..4] + stop_ct[11] + lh_ct`, `
+PRODUCT&PICK = 1000 × seisan[0]`; `WARP_TOP` só aparece com `beam_type=2`.
+O `stophistory` usa timestamps `HH:MM:SS` e datas `YYYY.MM.DD`, código de parada
+limpo em `STOP_CODE` (`----` quando o evento não tem código) e descrição em
+`STOP_CAUSE` — o legado embrulhava a célula com `=[código]` e não tinha a coluna
+LOOM. O `showstyle` monta a matriz preservando a ordem das listas `loom`/`style`
+fornecidas; em `data=operator` a coluna é `mac_name+&+operator_name` (estilo da
+tela operator do legado).

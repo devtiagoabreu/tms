@@ -19,6 +19,7 @@ from tms import config_service as cfg
 from tms.core.formulas import UNIT_PICK
 from tms.db.base import get_db
 from tms.reporting import PERIODS, WEEK_START
+from tms.reporting import history
 from tms.reporting import periods as reporting
 from tms.reporting import screens
 
@@ -27,7 +28,20 @@ router = APIRouter(prefix="/api/screens", tags=["screens"])
 Period = Query("day", description="shift | day | week | month")
 WeekStart = Query(WEEK_START, ge=0, le=6)
 Mode = Query("shift", pattern="^(shift|operator)$")
-Sel = Query("loom", pattern="^(loom|style)$")
+
+
+def Sel() -> Query:
+    """Query compartilhada para a seleção shred (loom|style).
+
+    Uma instância única global seria mutável: o primeiro endpoint que a
+    usasse fixaria o alias (``sel`` no shiftreport) e os demais (``sel_mode``)
+    passariam a ignorar o parâmetro. Uma fábrica retorna um Query novo a cada
+    chamada, preservando o nome do parâmetro de cada rota.
+    """
+    return Query("loom", pattern="^(loom|style)$")
+
+
+HistoryData = Query("shift", pattern="^(shift|operator)$")
 
 
 def _rows(
@@ -80,6 +94,35 @@ def _screen_out(screen: screens.Screen) -> dict:
         "header": screen.header,
         "rows": screen.rows,
     }
+
+
+def _history_rows(
+    db: Session,
+    period: str,
+    *,
+    key: str | None,
+    mac_name: str | None,
+    day_from: str | None,
+    day_to: str | None,
+    week_start: int,
+    min_run_tm: float,
+    min_effic: float,
+    sel_mode: str,
+    loom: list[str] | None,
+    style: list[str] | None,
+) -> list[reporting.PeriodRow]:
+    """Linhas do statushistory/svsreport: relatório por tear/estilo já filtrado
+    pelo `sel_mode` (lista de teares ou de estilos, como no legado)."""
+    rows = _rows(db, period, key=key, mac_name=mac_name, day_from=day_from,
+                 day_to=day_to, week_start=week_start, min_run_tm=min_run_tm,
+                 min_effic=min_effic, mode="shift")
+    if sel_mode == "loom" and loom:
+        wanted = set(loom)
+        rows = [r for r in rows if r.mac_name in wanted]
+    elif sel_mode == "style" and style:
+        wanted = set(style)
+        rows = [r for r in rows if (r.style or "") in wanted]
+    return rows
 
 
 # --------------------------------------------------------------- efficiency --
@@ -237,7 +280,7 @@ def shiftreport(
     db: Session = Depends(get_db),
     period: str | None = None,
     mode: str = Mode,
-    sel: str = Sel,
+    sel: str = Sel(),
     key: str | None = None,
     mac_name: str | None = None,
     day_from: str | None = None,
@@ -262,7 +305,7 @@ def shiftreport_csv(
     db: Session = Depends(get_db),
     period: str | None = None,
     mode: str = Mode,
-    sel: str = Sel,
+    sel: str = Sel(),
     key: str | None = None,
     mac_name: str | None = None,
     day_from: str | None = None,
@@ -341,3 +384,173 @@ def stylereport_csv(
     return _csv_response(_stylereport_screen(
         db, rows, period=period, beam_type=beam_type, unit=unit),
         "tms-stylereport.csv")
+
+
+# ------------------------------------------------------------- statushistory --
+
+@router.get("/statushistory")
+def statushistory(
+    db: Session = Depends(get_db),
+    period: str = Period,
+    sel_mode: str = Sel(),
+    loom: list[str] = Query(default=None),
+    style: list[str] = Query(default=None),
+    key: str | None = None,
+    mac_name: str | None = None,
+    day_from: str | None = None,
+    day_to: str | None = None,
+    week_start: int = WeekStart,
+    min_run_tm: float = Query(0.0, ge=0),
+    min_effic: float = Query(0.0, ge=0, le=100),
+) -> dict:
+    rows = _history_rows(
+        db, period, key=key, mac_name=mac_name, day_from=day_from, day_to=day_to,
+        week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic,
+        sel_mode=sel_mode, loom=loom, style=style,
+    )
+    return _screen_out(screens.statushistory_screen(rows, period))
+
+
+@router.get("/statushistory.csv")
+def statushistory_csv(
+    db: Session = Depends(get_db),
+    period: str = Period,
+    sel_mode: str = Sel(),
+    loom: list[str] = Query(default=None),
+    style: list[str] = Query(default=None),
+    key: str | None = None,
+    mac_name: str | None = None,
+    day_from: str | None = None,
+    day_to: str | None = None,
+    week_start: int = WeekStart,
+    min_run_tm: float = Query(0.0, ge=0),
+    min_effic: float = Query(0.0, ge=0, le=100),
+) -> Response:
+    rows = _history_rows(
+        db, period, key=key, mac_name=mac_name, day_from=day_from, day_to=day_to,
+        week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic,
+        sel_mode=sel_mode, loom=loom, style=style,
+    )
+    return _csv_response(screens.statushistory_screen(rows, period), "tms-statushistory.csv")
+
+
+# ---------------------------------------------------------------- svsreport --
+
+@router.get("/svsreport")
+def svsreport(
+    db: Session = Depends(get_db),
+    period: str = Period,
+    sel_mode: str = Sel(),
+    loom: list[str] = Query(default=None),
+    style: list[str] = Query(default=None),
+    key: str | None = None,
+    mac_name: str | None = None,
+    day_from: str | None = None,
+    day_to: str | None = None,
+    week_start: int = WeekStart,
+    min_run_tm: float = Query(0.0, ge=0),
+    min_effic: float = Query(0.0, ge=0, le=100),
+    beam_type: int = Query(1, ge=1, le=2),
+) -> dict:
+    rows = _history_rows(
+        db, period, key=key, mac_name=mac_name, day_from=day_from, day_to=day_to,
+        week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic,
+        sel_mode=sel_mode, loom=loom, style=style,
+    )
+    prefs = cfg.get_report_prefs(db)
+    return _screen_out(screens.svsreport_screen(
+        rows, prefs, period=period, beam_type=beam_type)
+    )
+
+
+@router.get("/svsreport.csv")
+def svsreport_csv(
+    db: Session = Depends(get_db),
+    period: str = Period,
+    sel_mode: str = Sel(),
+    loom: list[str] = Query(default=None),
+    style: list[str] = Query(default=None),
+    key: str | None = None,
+    mac_name: str | None = None,
+    day_from: str | None = None,
+    day_to: str | None = None,
+    week_start: int = WeekStart,
+    min_run_tm: float = Query(0.0, ge=0),
+    min_effic: float = Query(0.0, ge=0, le=100),
+    beam_type: int = Query(1, ge=1, le=2),
+) -> Response:
+    rows = _history_rows(
+        db, period, key=key, mac_name=mac_name, day_from=day_from, day_to=day_to,
+        week_start=week_start, min_run_tm=min_run_tm, min_effic=min_effic,
+        sel_mode=sel_mode, loom=loom, style=style,
+    )
+    prefs = cfg.get_report_prefs(db)
+    return _csv_response(screens.svsreport_screen(
+        rows, prefs, period=period, beam_type=beam_type),
+        "tms-svsreport.csv")
+
+
+# -------------------------------------------------------------- stophistory --
+
+@router.get("/stophistory")
+def stophistory(
+    db: Session = Depends(get_db),
+    day_from: str | None = None,
+    day_to: str | None = None,
+    mac_name: str | None = None,
+) -> dict:
+    return _screen_out(screens.stophistory_screen(
+        history.load_stop_events(db, day_from=day_from, day_to=day_to, mac_name=mac_name)
+    ))
+
+
+@router.get("/stophistory.csv")
+def stophistory_csv(
+    db: Session = Depends(get_db),
+    day_from: str | None = None,
+    day_to: str | None = None,
+    mac_name: str | None = None,
+) -> Response:
+    return _csv_response(screens.stophistory_screen(
+        history.load_stop_events(db, day_from=day_from, day_to=day_to, mac_name=mac_name)
+    ), "tms-stophistory.csv")
+
+
+# ---------------------------------------------------------------- showstyle --
+
+@router.get("/showstyle")
+def showstyle(
+    db: Session = Depends(get_db),
+    data: str = HistoryData,
+    sel_mode: str = Sel(),
+    loom: list[str] = Query(default=None),
+    style: list[str] = Query(default=None),
+    mac_name: str | None = None,
+    day_from: str | None = None,
+    day_to: str | None = None,
+) -> dict:
+    records = history.load_showstyle_records(
+        db, source=data, day_from=day_from, day_to=day_to, mac_name=mac_name
+    )
+    return _screen_out(screens.showstyle_screen(
+        records, data=data, sel_mode=sel_mode, loom=loom or (), style=style or ())
+    )
+
+
+@router.get("/showstyle.csv")
+def showstyle_csv(
+    db: Session = Depends(get_db),
+    data: str = HistoryData,
+    sel_mode: str = Sel(),
+    loom: list[str] = Query(default=None),
+    style: list[str] = Query(default=None),
+    mac_name: str | None = None,
+    day_from: str | None = None,
+    day_to: str | None = None,
+) -> Response:
+    records = history.load_showstyle_records(
+        db, source=data, day_from=day_from, day_to=day_to, mac_name=mac_name
+    )
+    return _csv_response(screens.showstyle_screen(
+        records, data=data, sel_mode=sel_mode, loom=loom or (), style=style or ()),
+        "tms-showstyle.csv")

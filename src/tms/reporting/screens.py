@@ -25,7 +25,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable, Iterable, List, Sequence
 
-from tms.core.formulas import UNIT_NAMES, UNIT_PICK
+from tms.core.formulas import UNIT_NAMES, UNIT_PICK, svs_other, svs_pick
+from tms.core.stopcodes import get_stop_cause
+from tms.reporting.history import ShowstyleRow, StopEventRow
 from tms.reporting.periods import PeriodRow
 
 # period_type do legado: shift=0, date=1, week=2, month=3
@@ -587,3 +589,183 @@ def stylereport_screen(
         clauses,
         period,
     )
+
+
+# ------------------------------------------------------------- statushistory --
+
+def statushistory_screen(
+    rows: Sequence[PeriodRow], period: str = "day"
+) -> Screen:
+    """Status history — as mesmas colunas do efficiency (`shift/statushistory.cgi`).
+
+    O legado filtra as linhas por tear ou estilo (`sel_mode`) e deixa EFFIC e
+    taxas para o Excel; aqui os valores são calculados no servidor. ``WARP`` =
+    ``stop[0..4] + stop[11]``, ``WEFT`` = ``stop[5]`` (idêntico ao efficiency).
+    """
+    return efficiency_screen(rows, period)
+
+
+# --------------------------------------------------------------- svsreport --
+
+def svsreport_screen(
+    rows: Sequence[PeriodRow],
+    prefs: dict,
+    *,
+    period: str = "day",
+    beam_type: int = 1,
+) -> Screen:
+    """`shift2/svsreport.cgi`: STYLE, LOOM, período, RUN/STOP/PRODUCT&PICK,
+    EFFIC/RPM, WARP/WF1/WF2/OTHER/TOTAL e WARP_TOP/WARP_BOTTOM + cores WF1/WF2.
+
+    ``WARP`` = ``stop[0]+stop[1]``; ``WF1/WF2`` = somas dos arrays; ``OTHER`` =
+    ``stop[2..4]+stop[11]+lh_ct``; ``TOTAL`` = soma dos quatro. `beam_type` do
+    selitem controla a coluna ``WARP_TOP``; as colunas WF1/WF2&COLORn seguem o
+    ``color`` do selitem.
+    """
+    color = _padded(list(prefs.get("color") or []), 6)
+    header = [
+        "STYLE", "LOOM", PERIOD_LABEL.get(period, period.upper()),
+        "RUN&MINUTE", "STOP&MINUTE", "PRODUCT&PICK", "EFFIC&PERCENT", "RPM",
+        "WARP", "WF1", "WF2", "OTHER", "TOTAL",
+    ]
+    if beam_type == 2:
+        header.append("WARP_TOP")
+    header.append("WARP_BOTTOM")
+    for i in range(6):
+        if color[i]:
+            header.append(f"WF1&COLOR{i + 1}")
+    for i in range(6):
+        if color[i]:
+            header.append(f"WF2&COLOR{i + 1}")
+
+    data = []
+    for index, row in enumerate(rows, start=1):
+        ct = _padded(row.stop_ct)
+        warp = ct[0] + ct[1]
+        wf1 = sum(row.wf1_ct)
+        wf2 = sum(row.wf2_ct)
+        other = svs_other(ct, row.lh_ct)
+        line = [
+            row.style or "", row.mac_name, index,
+            round(row.run_tm, 3), round(row.stop_ttm, 3),
+            round(svs_pick(_at(row.seisan, 0)), 3),
+            round(row.effic, 3), round(row.rpm, 3),
+            warp, wf1, wf2, other, warp + wf1 + wf2 + other,
+        ]
+        if beam_type == 2:
+            line.append(ct[0])
+        line.append(ct[1])
+        for i in range(6):
+            if color[i]:
+                line.append(int(_at(row.wf1_ct, i)))
+        for i in range(6):
+            if color[i]:
+                line.append(int(_at(row.wf2_ct, i)))
+        data.append(line)
+    return Screen(header=header, rows=data, period_type=PERIOD_TYPE.get(period, 0))
+
+
+# -------------------------------------------------------------- stophistory --
+
+def _seconds_to_hms(seconds: float) -> str:
+    total = max(0, int(seconds or 0))
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def stophistory_screen(records: Sequence[StopEventRow]) -> Screen:
+    """`shift/stophistory2.cgi`: eventos de parada em ordem crescente.
+
+    Cada linha é um evento (``ORDER`` corrido); ``STOP_TIME_POINT``/
+    ``RUN_TIME_POINT`` em ``HH:MM:SS`` (0 quando ausente no arquivo) e a causa
+    via `get_stop_cause`. O legado tinha uma coluna ``DUMMY`` com ``=[código]``;
+    aqui as células são limpas (``STOP_CODE``).
+    """
+    header = [
+        "ORDER", "DATE", "LOOM", "STOP_TIME_POINT", "RUN_TIME_POINT",
+        "STOP_CODE", "STOP_CAUSE",
+    ]
+    data = []
+    for order, rec in enumerate(records, start=1):
+        code = rec.raw_code or "----"
+        cause = get_stop_cause(code, rec.mac_type) if rec.raw_code else ""
+        data.append([
+            order, rec.day, rec.mac_name,
+            _seconds_to_hms(rec.stop_time),
+            _seconds_to_hms(rec.run_time),
+            code, cause,
+        ])
+    return Screen(header=header, rows=data, period_type=0)
+
+
+# -------------------------------------------------------------- showstyle --
+
+def _showstyle_key(rec: ShowstyleRow) -> str:
+    return f"{rec.mac_name}+&+{rec.operator_name or ''}"
+
+
+def showstyle_screen(
+    rows: Sequence[ShowstyleRow],
+    *,
+    data: str = "shift",
+    sel_mode: str = "loom",
+    loom: Sequence[str] = (),
+    style: Sequence[str] = (),
+) -> Screen:
+    """Matriz showstyle (`edit/showstyle2.cgi`): por turno/dia, quais estilos
+    cada tear (ou tear+operador) operou.
+
+    - ``data="shift"``: linhas = turnos (`agg_shift`);
+    - ``data="operator"``: linhas = dias (`operator_daily`) e colunas = chaves
+      ``TEAR+&+OPERADOR``;
+    - ``sel_mode="loom"``: colunas = teares, células = estilos (separados por
+      espaço); ``sel_mode="style"``: colunas = estilos, células = teares.
+
+    ``loom``/``style`` limitam a seleção quando passados (senão todos).
+    """
+    label = "SHIFT" if data == "shift" else "DATE"
+    loom_set = set(loom or ())
+    style_set = set(style or ())
+    if sel_mode == "loom":
+        selected = [r for r in rows if not loom_set or r.mac_name in loom_set]
+    elif sel_mode == "style":
+        selected = [r for r in rows if not style_set or (r.style or "") in style_set]
+    else:
+        raise ValueError(f"seleção showstyle inválida: {sel_mode}")
+
+    if data == "operator":
+        columns = list(dict.fromkeys(_showstyle_key(r) for r in selected))
+    elif sel_mode == "loom":
+        if loom_set:
+            columns = list(dict.fromkeys(str(x) for x in loom))
+        else:
+            columns = list(dict.fromkeys(r.mac_name for r in selected))
+    else:
+        if style_set:
+            columns = list(dict.fromkeys(str(x) for x in style))
+        else:
+            columns = list(dict.fromkeys(
+                (r.style or "") for r in selected if r.style not in (None, "")
+            ))
+
+    by_key: dict[str, list] = {}
+    for r in selected:
+        by_key.setdefault(r.key, []).append(r)
+
+    data_rows = []
+    for key in sorted(by_key):
+        line: list = [key]
+        cells: dict[str, list] = {col: [] for col in columns}
+        for r in by_key[key]:
+            col = _showstyle_key(r) if data == "operator" else (
+                r.mac_name if sel_mode == "loom" else (r.style or "")
+            )
+            if col in cells:
+                target = r.style or "" if data == "operator" else (
+                    r.style or "" if sel_mode == "loom" else r.mac_name
+                )
+                cells[col].append(target)
+        line.extend(" ".join(cells[col]) for col in columns)
+        data_rows.append(line)
+    return Screen(header=[label, *columns], rows=data_rows, period_type=0)

@@ -12,6 +12,7 @@ from tms import config_service as cfg
 from tms.app.main import app
 from tms.db.base import Base, get_db
 from tms.ingest import pipeline
+from tms.reporting import history
 from tms.reporting import periods as reporting
 from tms.reporting import screens
 
@@ -32,6 +33,8 @@ def session():
     pipeline.ingest_current(db, _text("current.txt"))
     pipeline.ingest_shift(db, _text("shift_2025.10.01.0.txt"), "2025.10.01.0")
     pipeline.ingest_operator(db, _text("operator_2025.10.01.txt"))
+    pipeline.ingest_stophistory(db, _text("stop_history_00000001.txt"))
+    pipeline.ingest_stophistory(db, _text("stop_history_open_00000002.txt"))
     db.commit()
     try:
         yield db
@@ -430,3 +433,213 @@ def test_stylereport_endpoint(client):
     )
     assert csv_response.status_code == 200
     assert csv_response.text.splitlines()[0].startswith("DATE,LOOM,SORTKEY,STYLE,LOOM_COUNT")
+
+
+# ------------------------------------------------------------- statushistory --
+
+def test_statushistory_screen_equals_efficiency(session):
+    """statushistory = colunas do efficiency (WARP = stop[0..4]+stop[11])."""
+    rows = _rows(session)
+    screen = screens.statushistory_screen(rows, "day")
+    ref = screens.efficiency_screen(rows, "day")
+    assert screen.header == ref.header == ["DATE", *screens.EFFICIENCY_COLUMNS]
+    assert screen.rows == ref.rows
+
+
+def test_statushistory_endpoint_filters_by_loom(client):
+    response = client.get(
+        "/api/screens/statushistory",
+        params={"period": "day", "key": "2025.10.01", "sel_mode": "loom", "loom": "00001"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["period_type"] == 1
+    assert body["header"][0] == "DATE"
+    assert body["header"][1:] == list(screens.EFFICIENCY_COLUMNS)
+    assert len(body["rows"]) == 1
+    assert body["rows"][0][1] == "00001"
+
+    csv_response = client.get(
+        "/api/screens/statushistory.csv",
+        params={"period": "day", "key": "2025.10.01", "sel_mode": "style", "style": "1420"},
+    )
+    assert csv_response.status_code == 200
+    assert csv_response.text.splitlines()[0].startswith("DATE,LOOM,STYLE")
+
+
+def test_statushistory_endpoint_style_filter(client):
+    response = client.get(
+        "/api/screens/statushistory",
+        params={"period": "day", "key": "2025.10.01", "sel_mode": "style", "style": "1420"},
+    )
+    body = response.json()
+    assert len(body["rows"]) == 1
+    assert body["rows"][0][2] == "1420"
+
+
+# ---------------------------------------------------------------- svsreport --
+
+def test_svsreport_screen(session):
+    rows = _rows(session)
+    prefs = copy.deepcopy(cfg.SELITEM_DEFAULTS)  # color = [1,1,0,0,0,0], beam_type=1
+    screen = screens.svsreport_screen(rows, prefs, period="day")
+    assert screen.header[0:3] == ["STYLE", "LOOM", "DATE"]
+    assert screen.header[3:9] == [
+        "RUN&MINUTE", "STOP&MINUTE", "PRODUCT&PICK", "EFFIC&PERCENT", "RPM", "WARP",
+    ]
+    assert "WARP_TOP" not in screen.header
+    assert "WARP_BOTTOM" in screen.header
+    assert screen.header[-4:] == ["WF1&COLOR1", "WF1&COLOR2", "WF2&COLOR1", "WF2&COLOR2"]
+
+    row = rows[0]  # 00001 JAT: stop_ct=[0,2,0,0,0,10,...], wf1=[1,9,0,0,0,0]
+    line = screen.rows[0]
+    assert line[0] == "2312" and line[1] == "00001" and line[2] == 1
+    assert line[5] == 216000.0
+    assert line[8] == 2          # WARP = stop[0]+stop[1]
+    assert line[9] == 10         # WF1 = sum(wf1_ct)
+    assert line[10] == 0         # WF2
+    assert line[11] == 0         # OTHER = stop[2..4]+stop[11]+lh
+    assert line[12] == 12        # TOTAL
+    assert line[13] == 2         # WARP_BOTTOM = stop[1]
+    assert line[14] == 1         # WF1&COLOR1
+    assert line[15] == 9         # WF1&COLOR2
+    assert line[16] == 0 and line[17] == 0  # WF2&COLOR1/2
+
+
+def test_svsreport_screen_beam_type_2(session):
+    rows = _rows(session)
+    prefs = copy.deepcopy(cfg.SELITEM_DEFAULTS)
+    screen = screens.svsreport_screen(rows, prefs, period="day", beam_type=2)
+    assert "WARP_TOP" in screen.header
+    idx = screen.header.index("WARP_TOP")
+    assert screen.rows[0][idx] == 0  # stop_ct[0]
+
+
+def test_svsreport_endpoint(client):
+    response = client.get(
+        "/api/screens/svsreport",
+        params={"period": "day", "key": "2025.10.01", "beam_type": 2},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["header"][0] == "STYLE"
+    assert "WARP_TOP" in body["header"]
+    assert len(body["rows"]) == 2
+
+    csv_response = client.get("/api/screens/svsreport.csv", params={"period": "day", "key": "2025.10.01"})
+    assert csv_response.status_code == 200
+    assert csv_response.text.splitlines()[0].startswith("STYLE,LOOM,DATE")
+
+
+# -------------------------------------------------------------- stophistory --
+
+def test_load_stop_events(session):
+    rows = history.load_stop_events(session, day_from="2026.07.01", day_to="2026.09.17")
+    assert len(rows) == 6
+    assert rows[0].mac_name == "00001"
+    assert rows[0].day == "2026.07.01"
+    assert rows[0].stop_time == 6 * 3600 + 36 * 60 + 9
+    assert rows[0].run_time == 0
+    assert rows[0].raw_code == "2153"
+    # 4 do 00001 + 2 do 00002 (ordem: dia, tear)
+    assert rows[4].mac_name == "00002"
+
+
+def test_load_stop_events_filters(session):
+    rows = history.load_stop_events(session, mac_name="00002")
+    assert len(rows) == 2
+    assert [r.day for r in rows] == ["2026.09.17", "2026.09.17"]
+    assert rows[1].raw_code == "0004"
+
+
+def test_stophistory_screen(session):
+    rows = history.load_stop_events(session, mac_name="00001")
+    screen = screens.stophistory_screen(rows)
+    assert screen.header == [
+        "ORDER", "DATE", "LOOM", "STOP_TIME_POINT", "RUN_TIME_POINT",
+        "STOP_CODE", "STOP_CAUSE",
+    ]
+    line = screen.rows[0]
+    assert line == [1, "2026.07.01", "00001", "06:36:09", "00:00:00", "2153", "DECLARE(WARP OUT)"]
+    assert screen.rows[1][5] == "0027"
+    assert screen.rows[1][6] == "[STOP] SWITCH PRESSED"
+    assert screen.rows[3][5] == "0004"
+    assert screen.rows[3][6] == "WEFT STOP BY WF1 (COLOR 1)"
+
+
+def test_stophistory_endpoint(client):
+    response = client.get(
+        "/api/screens/stophistory", params={"day_from": "2026.07.01", "mac_name": "00001"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["period_type"] == 0
+    assert len(body["rows"]) == 4
+    assert body["rows"][0][-1] == "DECLARE(WARP OUT)"
+
+    csv_response = client.get("/api/screens/stophistory.csv")
+    assert csv_response.status_code == 200
+    assert csv_response.text.splitlines()[0].startswith("ORDER,DATE,LOOM")
+
+
+# ---------------------------------------------------------------- showstyle --
+
+def test_load_showstyle_records_shift(session):
+    rows = history.load_showstyle_records(session, source="shift")
+    assert [(r.key, r.mac_name, r.style) for r in rows] == [
+        ("2025.10.01.0", "00001", "2312"),
+        ("2025.10.01.0", "00005", "1420"),
+    ]
+
+
+def test_load_showstyle_records_operator(op_session):
+    rows = history.load_showstyle_records(op_session, source="operator")
+    assert rows[0].key == "2025.10.01"
+    assert {(r.mac_name, r.operator_name) for r in rows} == {
+        ("00002", "Ope1"), ("00003", "Ope2"),
+    }
+    assert all(r.style == "2312" for r in rows)
+
+
+def test_showstyle_screen_shift_loom(session):
+    rows = history.load_showstyle_records(session, source="shift")
+    screen = screens.showstyle_screen(rows, data="shift", sel_mode="loom")
+    assert screen.header == ["SHIFT", "00001", "00005"]
+    assert screen.rows == [["2025.10.01.0", "2312", "1420"]]
+
+
+def test_showstyle_screen_shift_style(session):
+    rows = history.load_showstyle_records(session, source="shift")
+    screen = screens.showstyle_screen(rows, data="shift", sel_mode="style")
+    assert screen.header == ["SHIFT", "2312", "1420"]
+    assert screen.rows == [["2025.10.01.0", "00001", "00005"]]
+
+
+def test_showstyle_screen_operator(op_session):
+    rows = history.load_showstyle_records(op_session, source="operator")
+    screen = screens.showstyle_screen(
+        rows, data="operator", sel_mode="loom", loom=["00002"]
+    )
+    assert screen.header == ["DATE", "00002+&+Ope1"]
+    assert screen.rows == [["2025.10.01", "2312"]]
+
+
+def test_showstyle_screen_operator_by_style(op_session):
+    rows = history.load_showstyle_records(op_session, source="operator")
+    screen = screens.showstyle_screen(rows, data="operator", sel_mode="style", style=["2312"])
+    assert screen.header == ["DATE", "00002+&+Ope1", "00003+&+Ope2"]
+    assert screen.rows == [["2025.10.01", "2312", "2312"]]
+
+
+def test_showstyle_endpoint(client):
+    response = client.get("/api/screens/showstyle", params={"data": "operator"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["header"][0] == "DATE"
+    assert len(body["rows"]) == 1
+
+    csv_response = client.get(
+        "/api/screens/showstyle.csv", params={"data": "shift", "sel_mode": "style"}
+    )
+    assert csv_response.status_code == 200
+    assert csv_response.text.splitlines()[0].startswith("SHIFT,2312,1420")
