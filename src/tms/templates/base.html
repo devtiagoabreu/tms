@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-br" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title or 'TMS' }}</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script type="module" src="/static/js/tms.js"></script>
+</head>
+<body>
+  <header>
+    <h1>TMS</h1>
+    <nav>
+      <a href="/">Início</a>
+      <a href="/reports">Relatórios</a>
+      <a href="/telas">Telas</a>
+      <a href="/config">Configurações</a>
+      <a href="/monitor">Monitor</a>
+      <a href="/docs" target="_blank" rel="noopener">API /docs</a>
+    </nav>
+    <span class="muted">v{{ version }}</span>
+  </header>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

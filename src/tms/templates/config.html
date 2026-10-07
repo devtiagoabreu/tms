@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Configurações</h2>
+<p class="muted">Endpoins /api/settings/* — leitura/escrita via API (preview).</p>
+
+<div class="grid">
+  <section class="card">
+    <h2>IP Ranges</h2>
+    <textarea id="iptext" rows="8" style="width:100%"></textarea>
+    <button id="loadIp">Carregar</button>
+    <button id="saveIp">Salvar</button>
+    <pre id="ipres"></pre>
+  </section>
+  <section class="card">
+    <h2>Styles</h2>
+    <textarea id="sttext" rows="8" style="width:100%"></textarea>
+    <button id="loadSt">Carregar</button>
+    <button id="saveSt">Salvar</button>
+    <pre id="stres"></pre>
+  </section>
+  <section class="card">
+    <h2>Shift</h2>
+    <textarea id="shtext" rows="8" style="width:100%"></textarea>
+    <button id="loadSh">Carregar</button>
+    <button id="saveSh">Salvar</button>
+    <pre id="shres"></pre>
+  </section>
+  <section class="card">
+    <h2>Report Prefs (JSON)</h2>
+    <textarea id="rptext" rows="12" style="width:100%"></textarea>
+    <button id="loadRp">Carregar</button>
+    <button id="saveRp">Salvar</button>
+    <pre id="rpres"></pre>
+  </section>
+</div>
+
+<script type="module">
+  import { fetchJSON } from '/static/js/tms.js';
+  async function getJson(url, ta, pre){ const r=await fetchJSON(url); pre.textContent=JSON.stringify(r.json,null,2); if(r.json.text!==undefined) ta.value=r.json.text; else if(r.json.prefs!==undefined) ta.value=JSON.stringify(r.json,null,2); else if(typeof r.json==='object'&&!Array.isArray(r.json)) ta.value=JSON.stringify(r.json,null,2); }
+  async function putText(url, ta, pre){ const body={'text':ta.value}; const r=await fetchJSON(url,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); pre.textContent=JSON.stringify(r.json,null,2); }
+  async function putJson(url, ta, pre){ let j; try{j=JSON.parse(ta.value)}catch{pre.textContent='JSON inválido';return} const r=await fetchJSON(url,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(j.prefs!==undefined?j:j)}); pre.textContent=JSON.stringify(r.json,null,2); }
+
+  document.getElementById('loadIp').onclick=()=>getJson('/api/settings/ip-ranges', document.getElementById('iptext'), document.getElementById('ipres'));
+  document.getElementById('saveIp').onclick=()=>putText('/api/settings/ip-ranges', document.getElementById('iptext'), document.getElementById('ipres'));
+  document.getElementById('loadSt').onclick=()=>getJson('/api/settings/styles', document.getElementById('sttext'), document.getElementById('stres'));
+  document.getElementById('saveSt').onclick=()=>putText('/api/settings/styles', document.getElementById('sttext'), document.getElementById('stres'));
+  document.getElementById('loadSh').onclick=()=>getJson('/api/settings/shift', document.getElementById('shtext'), document.getElementById('shres'));
+  document.getElementById('saveSh').onclick=()=>putText('/api/settings/shift', document.getElementById('shtext'), document.getElementById('shres'));
+  document.getElementById('loadRp').onclick=async()=>{ const r=await fetchJSON('/api/settings/report-prefs'); document.getElementById('rpres').textContent=JSON.stringify(r.json,null,2); document.getElementById('rptext').value=JSON.stringify(r.json,null,2); };
+  document.getElementById('saveRp').onclick=async()=>{ let j; try{j=JSON.parse(document.getElementById('rptext').value)}catch{document.getElementById('rpres').textContent='JSON inválido';return} const r=await fetchJSON('/api/settings/report-prefs',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({prefs:j.prefs||j})}); document.getElementById('rpres').textContent=JSON.stringify(r.json,null,2); };
+</script>
+{% endblock %}

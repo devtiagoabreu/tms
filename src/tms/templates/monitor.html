@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Monitor</h2>
+<p class="muted">Reaproveita <a href="/api/monitor">/api/monitor</a> (frescura + parada + live opcional).</p>
+
+<div class="form-row">
+  <label>offline_after_s <input id="ofs" type="number" value="900" style="width:90px"></label>
+  <label>lang <input id="lang" value="pt" style="width:60px"></label>
+  <label><input type="checkbox" id="live"> live</label>
+  <label><input type="checkbox" id="stored"> stored</label>
+  <label>timeout <input id="timeout" type="number" value="5" step="0.5" style="width:70px"></label>
+  <button id="refresh">Atualizar</button>
+</div>
+
+<div class="grid" id="grid"></div>
+<div class="muted" id="status" style="margin-top:8px"></div>
+
+<script type="module">
+  import { qs, fetchJSON, fmtNumber, fmtInt, fmtDate } from '/static/js/tms.js';
+  const grid = document.getElementById('grid');
+  const status = document.getElementById('status');
+
+  function stopInfo(s){
+    if(!s) return '';
+    return `<div class="muted">parada: ${s.cause||''} (${fmtNumber(s.duration_min,1)} min)</div>`;
+  }
+
+  function liveInfo(l){
+    if(!l) return '';
+    return `<div class="muted">live: ${l.status} | rpm ${l.rpm||'-'} | eff ${fmtNumber(l.efficiency,1)}% | 24h ${fmtNumber(l.efficiency_24h,1)}%</div>`;
+  }
+
+  function card(m){
+    const div = document.createElement('section');
+    div.className = 'card';
+    div.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:baseline">
+      <strong>${m.mac_name}</strong>
+      <span style="color:${m.color};font-weight:600">${m.state_label}</span>
+    </div>
+    <div class="muted">${m.mac_type} | visto ${fmtDate(m.last_seen)} (há ${fmtNumber(m.age_min,1)} min)</div>
+    <div>eff ${fmtNumber(m.efficiency,1)}% | rpm ${fmtNumber(m.rpm,1)} | prod ${m.production||'-'} | turno ${m.shift_id||'-'}</div>
+    ${stopInfo(m.stop)}
+    ${liveInfo(m.live)}
+    <div class="muted">source: ${m.source}</div>`;
+    return div;
+  }
+
+  async function load(){
+    const params = qs({
+      offline_after_s: document.getElementById('ofs').value,
+      lang: document.getElementById('lang').value,
+      live: document.getElementById('live').checked ? 'true':'',
+      stored: document.getElementById('stored').checked ? 'true':'',
+      timeout: document.getElementById('timeout').value
+    });
+    status.textContent = 'Carregando...';
+    const res = await fetchJSON(`/api/monitor?${params}`);
+    status.textContent = res.ok ? `${res.json.length} teares` : `Erro ${res.status}`;
+    grid.innerHTML = '';
+    (res.json||[]).forEach(m=>grid.appendChild(card(m)));
+  }
+
+  document.getElementById('refresh').onclick = load;
+  load();
+  setInterval(load, 30000);
+</script>
+{% endblock %}

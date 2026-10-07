@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Relatórios</h2>
+<p class="muted">Busca em /api/reports/{period} com filtros básicos (key/mac/day/from/to).</p>
+
+<div class="card">
+  <form id="reportForm" class="form-row">
+    <label>Período
+      <select name="period">
+        <option value="day" selected>day</option>
+        <option value="week">week</option>
+        <option value="month">month</option>
+      </select>
+    </label>
+    <label>Key <input name="key" placeholder="2025.10.01 / 2025.41 / 2025.10"></label>
+    <label>MAC <input name="mac_name" placeholder="00001"></label>
+    <label>De <input name="day_from" placeholder="2025.10.01"></label>
+    <label>Até <input name="day_to" placeholder="2025.10.01"></label>
+    <label>Unit <select name="unit"><option value="0">Pick</option><option value="1">Meter</option><option value="2">Yard</option></select></label>
+    <label>Beam <select name="beam_type"><option value="1">1</option><option value="2">2</option></select></label>
+    <button type="submit">Buscar</button>
+    <button type="button" id="csvBtn">CSV</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="muted" id="status">Aguardando...</div>
+  <div style="overflow:auto">
+    <table id="table">
+      <thead>
+        <tr>
+          <th>period</th><th>key</th><th>mac</th><th>type</th><th>style</th>
+          <th>prod</th><th>effic</th><th>rpm</th><th>run</th><th>stop</th><th>total_ct</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+      <tfoot></tfoot>
+    </table>
+  </div>
+</div>
+
+<script type="module">
+  import { qs, fetchJSON, fmtNumber, fmtInt } from '/static/js/tms.js';
+  const form = document.getElementById('reportForm');
+  const tbody = document.querySelector('#table tbody');
+  const status = document.getElementById('status');
+  const csvBtn = document.getElementById('csvBtn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const obj = Object.fromEntries(fd.entries());
+    const period = obj.period || 'day';
+    const q = qs(obj);
+    status.textContent = 'Buscando...';
+    const res = await fetchJSON(`/api/reports/${encodeURIComponent(period)}?${q}`);
+    status.textContent = res.ok ? `OK ${res.json.length} linhas` : `Erro ${res.status}`;
+    tbody.innerHTML = '';
+    (res.json || []).slice(0,500).forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${r.period}</td><td>${r.key}</td><td>${r.mac_name}</td><td>${r.mac_type}</td><td>${r.style||''}</td><td class="text-right">${fmtNumber(r.production,1)}</td><td class="text-right">${fmtNumber(r.effic,1)}</td><td class="text-right">${fmtNumber(r.rpm,1)}</td><td class="text-right">${fmtInt(r.run_tm)}</td><td class="text-right">${fmtInt(r.stop_ttm)}</td><td class="text-right">${r.total_ct}</td>`;
+      tbody.appendChild(tr);
+    });
+  });
+
+  csvBtn.addEventListener('click', () => {
+    const fd = new FormData(form);
+    const obj = Object.fromEntries(fd.entries());
+    const period = obj.period || 'day';
+    const q = qs(obj);
+    window.location = `/api/reports/${encodeURIComponent(period)}.csv?${q}`;
+  });
+</script>
+{% endblock %}

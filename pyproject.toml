@@ -14,6 +14,7 @@ dependencies = [
     "alembic>=1.20",
     "pydantic>=2.13",
     "psycopg[binary]>=3.1",
+    "jinja2>=3.1",
 ]
 
 [project.optional-dependencies]
@@ -27,6 +28,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "tms.i18n" = ["translations/*.json"]
+"tms" = ["templates/*.html", "static/css/*.css", "static/js/*.js"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

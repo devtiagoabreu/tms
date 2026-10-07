@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from tms import __version__
 from tms.app.api.health import router as health_router
@@ -12,6 +13,7 @@ from tms.app.api.runtime import router as runtime_router
 from tms.app.api.screens import router as screens_router
 from tms.app.api.settings import router as settings_router
 from tms.app.dashboard import router as dashboard_router
+from tms.app.web import router as web_router
 
 app = FastAPI(title="TMS — Toyota Loom Monitoring System", version=__version__)
 
@@ -22,6 +24,15 @@ app.include_router(monitor_router)
 app.include_router(screens_router)
 app.include_router(settings_router)
 app.include_router(dashboard_router)
+app.include_router(web_router)
+
+try:
+    app.mount("/static", StaticFiles(directory="src/tms/static"), name="static")
+except Exception:
+    try:
+        app.mount("/static", StaticFiles(directory="tms/static"), name="static")
+    except Exception:
+        pass
 
 
 @app.get("/")

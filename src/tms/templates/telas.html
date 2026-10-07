@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Telas (Screens)</h2>
+<p class="muted">Endpoints /api/screens/* (JSON). CSV com botão direto.</p>
+
+<div class="card">
+  <form id="screenForm" class="form-row">
+    <label>Screen
+      <select name="screen">
+        <option value="efficiency">efficiency</option>
+        <option value="production">production</option>
+        <option value="stop-analysis">stop-analysis</option>
+        <option value="shiftreport">shiftreport</option>
+        <option value="stylereport">stylereport</option>
+        <option value="statushistory">statushistory</option>
+        <option value="svsreport">svsreport</option>
+        <option value="stophistory">stophistory</option>
+        <option value="showstyle">showstyle</option>
+      </select>
+    </label>
+    <label>Período
+      <select name="period">
+        <option value="day">day</option>
+        <option value="shift">shift</option>
+        <option value="week">week</option>
+        <option value="month">month</option>
+      </select>
+    </label>
+    <label>Mode
+      <select name="mode">
+        <option value="shift">shift</option>
+        <option value="operator">operator</option>
+      </select>
+    </label>
+    <label>Sel <select name="sel"><option value="loom">loom</option><option value="style">style</option></select></label>
+    <label>Data (showstyle) <select name="data"><option value="shift">shift</option><option value="operator">operator</option></select></label>
+    <label>Value (stop-analysis) <select name="value"><option value="count">count</option><option value="time">time</option></select></label>
+    <label>Key <input name="key" placeholder="2025.10.01"></label>
+    <label>MAC <input name="mac_name" placeholder="00001"></label>
+    <label>De <input name="day_from" placeholder="2025.10.01"></label>
+    <label>Até <input name="day_to" placeholder="2025.10.01"></label>
+    <button type="submit">Buscar</button>
+    <button type="button" id="csvBtn">CSV</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="muted" id="status">Aguardando...</div>
+  <pre id="out"></pre>
+</div>
+
+<script type="module">
+  import { qs, fetchJSON } from '/static/js/tms.js';
+  const form = document.getElementById('screenForm');
+  const status = document.getElementById('status');
+  const out = document.getElementById('out');
+  const csvBtn = document.getElementById('csvBtn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const obj = Object.fromEntries(fd.entries());
+    const screen = obj.screen || 'efficiency';
+    const q = qs(obj);
+    status.textContent = 'Buscando...';
+    const res = await fetchJSON(`/api/screens/${encodeURIComponent(screen)}?${q}`);
+    status.textContent = res.ok ? `OK` : `Erro ${res.status}`;
+    out.textContent = JSON.stringify(res.json || res.text, null, 2);
+  });
+
+  csvBtn.addEventListener('click', () => {
+    const fd = new FormData(form);
+    const obj = Object.fromEntries(fd.entries());
+    const screen = obj.screen || 'efficiency';
+    const q = qs(obj);
+    window.location = `/api/screens/${encodeURIComponent(screen)}.csv?${q}`;
+  });
+</script>
+{% endblock %}
