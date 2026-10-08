@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Máquinas</h2>
+<p class="muted">Listagem e último snapshot.</p>
+
+<div class="card">
+  <button id="load">Carregar</button>
+  <div class="muted" id="status"></div>
+</div>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr><th>mac_name</th><th>mac_type</th><th>ip_addr</th><th>active</th><th>snapshot</th></tr>
+    </thead>
+    <tbody id="tb"></tbody>
+  </table>
+</div>
+
+<pre id="snap"></pre>
+
+<script type="module">
+  import { fetchJSON, fmtDate } from '/static/js/tms.js';
+  const tb=document.getElementById('tb'), status=document.getElementById('status'), snap=document.getElementById('snap');
+  document.getElementById('load').onclick=load;
+  async function load(){
+    status.textContent='...'; tb.innerHTML='';
+    const r=await fetchJSON('/api/machines');
+    status.textContent=r.ok?`${r.json.length} máquinas`:`erro ${r.status}`;
+    (r.json||[]).forEach(m=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML=`<td>${m.mac_name}</td><td>${m.mac_type}</td><td>${m.ip_addr||'-'}</td><td>${m.active}</td><td><button data-m="${m.mac_name}">ver</button></td>`;
+      tb.appendChild(tr);
+    });
+    tb.querySelectorAll('button[data-m]').forEach(b=>{
+      b.onclick=async()=>{
+        const s=await fetchJSON(`/api/machines/${b.dataset.m}/snapshot`);
+        snap.textContent=JSON.stringify(s.json,null,2);
+      };
+    });
+  }
+</script>
+{% endblock %}

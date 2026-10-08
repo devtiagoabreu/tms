@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Production</h2>
+<p class="muted">/api/screens/production</p>
+<div class="card">
+  <form id="f" class="form-row">
+    <label>period <select name="period"><option value="day">day</option><option value="shift">shift</option><option value="week">week</option><option value="month">month</option></select></label>
+    <label>mode <select name="mode"><option value="shift">shift</option><option value="operator">operator</option></select></label>
+    <label>unit <select name="unit"><option value="0">Pick</option><option value="1">Meter</option><option value="2">Yard</option></select></label>
+    <label>key <input name="key"></label><label>mac <input name="mac_name"></label><label>de <input name="day_from"></label><label>até <input name="day_to"></label>
+    <button>buscar</button><button type="button" id="csv">CSV</button>
+  </form>
+</div>
+<div class="card" style="overflow:auto">
+  <table id="t"><thead><tr><th>DATE</th><th>LOOM/OP</th><th>STYLE</th><th>PRODUCT</th></tr></thead><tbody></tbody></table>
+</div>
+<script type="module">
+  import {qs,fetchJSON,fmtNumber} from '/static/js/tms.js';
+  const f=document.getElementById('f'), tbody=document.querySelector('#t tbody');
+  f.onsubmit=async e=>{e.preventDefault();const q=qs(Object.fromEntries(new FormData(f)));const r=await fetchJSON(`/api/screens/production?${q}`);tbody.innerHTML='';(r.json.rows||[]).forEach(line=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${line[0]}</td><td>${line[1]}</td><td>${line[2]||''}</td><td>${fmtNumber(line[3],1)}</td>`;tbody.appendChild(tr);});};
+  document.getElementById('csv').onclick=()=>window.location=`/api/screens/production.csv?${qs(Object.fromEntries(new FormData(f)))}`;
+</script>
+{% endblock %}

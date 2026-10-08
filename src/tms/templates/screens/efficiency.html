@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Efficiency</h2>
+<p class="muted">/api/screens/efficiency (JSON/CSV)</p>
+
+<div class="card">
+  <form id="f" class="form-row">
+    <label>period <select name="period"><option value="day">day</option><option value="shift">shift</option><option value="week">week</option><option value="month">month</option></select></label>
+    <label>mode <select name="mode"><option value="shift">shift</option><option value="operator">operator</option></select></label>
+    <label>key <input name="key"></label>
+    <label>mac <input name="mac_name"></label>
+    <label>de <input name="day_from"></label>
+    <label>até <input name="day_to"></label>
+    <label>min_run <input name="min_run_tm" value="0" style="width:70px"></label>
+    <label>min_eff <input name="min_effic" value="0" style="width:70px"></label>
+    <button>buscar</button>
+    <button type="button" id="csv">CSV</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="muted" id="st"></div>
+  <div style="overflow:auto">
+    <table id="t">
+      <thead><tr><th>DATE</th><th>LOOM/OP</th><th>STYLE</th><th>EFFIC%</th><th>RUN</th><th>STOP</th><th>WARP</th><th>WARP CPH</th><th>WARP CPD</th><th>WEFT</th><th>WEFT CPH</th><th>WEFT CPD</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script type="module">
+  import {qs,fetchJSON,fmtNumber,fmtInt} from '/static/js/tms.js';
+  const f=document.getElementById('f'), st=document.getElementById('st'), tbody=document.querySelector('#t tbody');
+  f.onsubmit=async e=>{e.preventDefault(); const obj=Object.fromEntries(new FormData(f)); const q=qs(obj); st.textContent='...'; const r=await fetchJSON(`/api/screens/efficiency?${q}`); st.textContent=r.ok?`${r.json.rows?.length||0} linhas`:`err`; tbody.innerHTML=''; (r.json.rows||[]).forEach(line=>{const tr=document.createElement('tr'); tr.innerHTML=`<td>${line[0]}</td><td>${line[1]}</td><td>${line[2]||''}</td><td>${fmtNumber(line[3],3)}</td><td>${fmtInt(line[4])}</td><td>${fmtInt(line[5])}</td><td>${line[6]}</td><td>${fmtNumber(line[7],3)}</td><td>${fmtNumber(line[8],3)}</td><td>${line[9]}</td><td>${fmtNumber(line[10],3)}</td><td>${fmtNumber(line[11],3)}</td>`; tbody.appendChild(tr);}); };
+  document.getElementById('csv').onclick=()=>{const obj=Object.fromEntries(new FormData(f)); window.location=`/api/screens/efficiency.csv?${qs(obj)}`;};
+</script>
+{% endblock %}

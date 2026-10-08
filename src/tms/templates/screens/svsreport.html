@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>SVS Report</h2>
+<p class="muted">/api/screens/svsreport</p>
+<div class="card">
+  <form id="f" class="form-row">
+    <label>period <select name="period"><option value="day">day</option><option value="shift">shift</option><option value="week">week</option><option value="month">month</option></select></label>
+    <label>sel_mode <select name="sel_mode"><option value="loom">loom</option><option value="style">style</option></select></label>
+    <label>beam <select name="beam_type"><option value="1">1</option><option value="2">2</option></select></label>
+    <label>key <input name="key"></label><label>mac <input name="mac_name"></label>
+    <button>buscar</button><button type="button" id="csv">CSV</button>
+  </form>
+</div>
+<div class="card"><pre id="out"></pre></div>
+<script type="module">
+  import {qs,fetchJSON} from '/static/js/tms.js';
+  const f=document.getElementById('f'), out=document.getElementById('out');
+  f.onsubmit=async e=>{e.preventDefault();const q=qs(Object.fromEntries(new FormData(f)));const r=await fetchJSON(`/api/screens/svsreport?${q}`);out.textContent=JSON.stringify(r.json,null,2);};
+  document.getElementById('csv').onclick=()=>window.location=`/api/screens/svsreport.csv?${qs(Object.fromEntries(new FormData(f)))}`;
+</script>
+{% endblock %}

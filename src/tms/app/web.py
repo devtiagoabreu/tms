@@ -74,3 +74,53 @@ def monitor_page_html(request: Request, db: Session = Depends(get_db)) -> HTMLRe
             "version": __version__,
         },
     )
+
+
+@router.get("/screens/efficiency", response_class=HTMLResponse)
+def screen_efficiency(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "screens/efficiency.html", {"title": "TMS - Efficiency", "version": __version__})
+
+
+@router.get("/screens/production", response_class=HTMLResponse)
+def screen_production(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "screens/production.html", {"title": "TMS - Production", "version": __version__})
+
+
+@router.get("/screens/stop-analysis", response_class=HTMLResponse)
+def screen_stopanalysis(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "screens/stopanalysis.html", {"title": "TMS - Stop Analysis", "version": __version__})
+
+
+@router.get("/screens/shiftreport", response_class=HTMLResponse)
+def screen_shiftreport(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "screens/shiftreport.html", {"title": "TMS - Shift Report", "version": __version__})
+
+
+@router.get("/screens/stylereport", response_class=HTMLResponse)
+def screen_stylereport(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "screens/stylereport.html", {"title": "TMS - Style Report", "version": __version__})
+
+
+@router.get("/screens/statushistory", response_class=HTMLResponse)
+def screen_statushistory(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "screens/statushistory.html", {"title": "TMS - Status History", "version": __version__})
+
+
+@router.get("/screens/svsreport", response_class=HTMLResponse)
+def screen_svsreport(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "screens/svsreport.html", {"title": "TMS - SVS Report", "version": __version__})
+
+
+@router.get("/screens/stophistory", response_class=HTMLResponse)
+def screen_stophistory(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "screens/stophistory.html", {"title": "TMS - Stop History", "version": __version__})
+
+
+@router.get("/screens/showstyle", response_class=HTMLResponse)
+def screen_showstyle(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "screens/showstyle.html", {"title": "TMS - Show Style", "version": __version__})
+
+
+@router.get("/machines", response_class=HTMLResponse)
+def machines_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "machines.html", {"title": "TMS - Máquinas", "version": __version__})
