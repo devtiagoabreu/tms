@@ -1,34 +1,45 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Início</h2>
-<p class="muted">Toyota Loom Monitoring System — visão geral.</p>
+<div class="page-head">
+  <h1 class="page-title">Início</h1>
+  <p class="page-sub">Toyota Loom Monitoring System — visão geral do sistema.</p>
+</div>
+
 <div class="grid">
-  <section class="card">
-    <h2>Relatórios</h2>
-    <ul>
-      <li><a href="/reports">Consultar por dia/semana/mês</a></li>
-      <li><a href="/api/reports/day.csv?key=2025.10.01">Exemplo CSV (day)</a></li>
-    </ul>
-  </section>
-  <section class="card">
-    <h2>Telas</h2>
-    <ul>
-      <li><a href="/telas">Efficiency, Production, Stop Analysis, Shift/Stylereport, Histórico</a></li>
-      <li><a href="/api/screens/efficiency?period=day&key=2025.10.01">Efficiency (JSON)</a></li>
-    </ul>
-  </section>
-  <section class="card">
-    <h2>Monitor</h2>
-    <ul>
-      <li><a href="/monitor">Dashboard em tempo real</a></li>
-      <li><a href="/api/monitor">API /api/monitor</a></li>
-    </ul>
-  </section>
-  <section class="card">
-    <h2>Configurações</h2>
-    <ul>
-      <li><a href="/config">IP Ranges, Styles, Shift, Report Prefs, Settings</a></li>
-    </ul>
-  </section>
+  {% for group in nav %}
+    {% if group.label == 'Visão geral' %}
+      {% for item in group['items'] if item.href != '/docs' %}
+      <a class="link-card" href="{{ item.href }}" {% if item.href == '/docs' %}target="_blank" rel="noopener"{% endif %}>
+        <h3>{{ item.label }}</h3>
+        <p>{{ item.desc }}</p>
+        <p class="muted" style="margin-top:10px;font-family:var(--font-mono);font-size:0.6875rem">
+          legado: {{ item.legacy }}
+        </p>
+      </a>
+      {% endfor %}
+    {% endif %}
+  {% endfor %}
+</div>
+
+<div class="card" style="margin-top:var(--sp-4)">
+  <div class="card-head">
+    <h2 class="card-title">Todas as telas</h2>
+    <a class="btn btn-sm" href="/telas">Formulário único</a>
+  </div>
+  <div class="grid">
+    {% for group in nav %}
+      {% if group.label != 'Visão geral' %}
+      {% for item in group['items'] if item.href != '/docs' %}
+      <a class="link-card" href="{{ item.href }}">
+        <h3>{{ item.label }}</h3>
+        <p>{{ item.desc }}</p>
+        <p class="muted" style="margin-top:10px;font-family:var(--font-mono);font-size:0.6875rem">
+          legado: {{ item.legacy }}
+        </p>
+      </a>
+      {% endfor %}
+      {% endif %}
+    {% endfor %}
+  </div>
 </div>
 {% endblock %}

@@ -42,4 +42,41 @@ function tableRows(tbody, rows, mapFn) {
   rows.forEach(r => tbody.appendChild(mapFn(r)));
 }
 
-export { qs, fetchJSON, fmtNumber, fmtInt, fmtDate, tableRows };
+function esc(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+function setStatus(el, text, tone) {
+  if (!el) return;
+  el.innerHTML = `<span class="badge${tone ? ' badge-' + tone : ''}">${esc(text)}</span>`;
+}
+
+function initShell() {
+  const root = document.documentElement;
+
+  const toggle = document.getElementById('themeToggle');
+  if (toggle) {
+    toggle.addEventListener('click', () => {
+      const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+      root.dataset.theme = next;
+      try { localStorage.setItem('tms-theme', next); } catch (e) { /* ignore */ }
+    });
+  }
+
+  const navToggle = document.getElementById('navToggle');
+  const sidebar = document.getElementById('sidebar');
+  if (navToggle && sidebar) {
+    navToggle.addEventListener('click', () => sidebar.classList.toggle('open'));
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initShell);
+} else {
+  initShell();
+}
+
+export { qs, fetchJSON, fmtNumber, fmtInt, fmtDate, tableRows, esc, setStatus };

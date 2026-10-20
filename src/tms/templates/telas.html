@@ -1,12 +1,18 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Telas (Screens)</h2>
-<p class="muted">Endpoints /api/screens/* (JSON). CSV com botão direto.</p>
+<div class="page-head">
+  <h1 class="page-title">Telas</h1>
+  <p class="page-sub">Consulta unificada dos endpoints <code>/api/screens/*</code>.</p>
+</div>
 
 <div class="card">
+  <div class="card-head">
+    <h2 class="card-title">Filtros</h2>
+  </div>
   <form id="screenForm" class="form-row">
-    <label>Screen
-      <select name="screen">
+    <div class="field">
+      <label for="screen">Screen</label>
+      <select id="screen" name="screen">
         <option value="efficiency">efficiency</option>
         <option value="production">production</option>
         <option value="stop-analysis">stop-analysis</option>
@@ -17,63 +23,105 @@
         <option value="stophistory">stophistory</option>
         <option value="showstyle">showstyle</option>
       </select>
-    </label>
-    <label>Período
-      <select name="period">
+    </div>
+    <div class="field">
+      <label for="period">Período</label>
+      <select id="period" name="period">
         <option value="day">day</option>
         <option value="shift">shift</option>
         <option value="week">week</option>
         <option value="month">month</option>
       </select>
-    </label>
-    <label>Mode
-      <select name="mode">
+    </div>
+    <div class="field">
+      <label for="mode">Modo</label>
+      <select id="mode" name="mode">
         <option value="shift">shift</option>
         <option value="operator">operator</option>
       </select>
-    </label>
-    <label>Sel <select name="sel"><option value="loom">loom</option><option value="style">style</option></select></label>
-    <label>Data (showstyle) <select name="data"><option value="shift">shift</option><option value="operator">operator</option></select></label>
-    <label>Value (stop-analysis) <select name="value"><option value="count">count</option><option value="time">time</option></select></label>
-    <label>Key <input name="key" placeholder="2025.10.01"></label>
-    <label>MAC <input name="mac_name" placeholder="00001"></label>
-    <label>De <input name="day_from" placeholder="2025.10.01"></label>
-    <label>Até <input name="day_to" placeholder="2025.10.01"></label>
-    <button type="submit">Buscar</button>
-    <button type="button" id="csvBtn">CSV</button>
+    </div>
+    <div class="field">
+      <label for="sel">Seleção</label>
+      <select id="sel" name="sel">
+        <option value="loom">loom</option>
+        <option value="style">style</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="data">Dados</label>
+      <select id="data" name="data">
+        <option value="shift">shift</option>
+        <option value="operator">operator</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="value">Valor</label>
+      <select id="value" name="value">
+        <option value="count">count</option>
+        <option value="time">time</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="key">Key</label>
+      <input id="key" name="key" placeholder="2025.10.01">
+    </div>
+    <div class="field">
+      <label for="mac_name">MAC</label>
+      <input id="mac_name" name="mac_name" placeholder="00001">
+    </div>
+    <div class="field">
+      <label for="day_from">De</label>
+      <input id="day_from" name="day_from" placeholder="2025.10.01">
+    </div>
+    <div class="field">
+      <label for="day_to">Até</label>
+      <input id="day_to" name="day_to" placeholder="2025.10.01">
+    </div>
+    <div class="field">
+      <label>&nbsp;</label>
+      <div class="row">
+        <button class="btn btn-primary" type="submit">Buscar</button>
+        <button class="btn" type="button" id="csvBtn">CSV</button>
+      </div>
+    </div>
   </form>
 </div>
 
 <div class="card">
-  <div class="muted" id="status">Aguardando...</div>
-  <pre id="out"></pre>
+  <div class="card-head">
+    <h2 class="card-title">Resposta</h2>
+    <div class="status-line" id="status" style="margin:0"></div>
+  </div>
+  <pre id="out">Execute uma busca para ver o resultado.</pre>
 </div>
 
 <script type="module">
-  import { qs, fetchJSON } from '/static/js/tms.js';
+  import { qs, fetchJSON, setStatus } from '/static/js/tms.js';
+
   const form = document.getElementById('screenForm');
   const status = document.getElementById('status');
   const out = document.getElementById('out');
-  const csvBtn = document.getElementById('csvBtn');
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const fd = new FormData(form);
-    const obj = Object.fromEntries(fd.entries());
+    const obj = Object.fromEntries(new FormData(form).entries());
     const screen = obj.screen || 'efficiency';
-    const q = qs(obj);
-    status.textContent = 'Buscando...';
-    const res = await fetchJSON(`/api/screens/${encodeURIComponent(screen)}?${q}`);
-    status.textContent = res.ok ? `OK` : `Erro ${res.status}`;
-    out.textContent = JSON.stringify(res.json || res.text, null, 2);
+    setStatus(status, 'carregando…');
+
+    const res = await fetchJSON(`/api/screens/${encodeURIComponent(screen)}?${qs(obj)}`);
+    if (!res.ok) {
+      setStatus(status, `erro ${res.status}`, 'danger');
+      out.textContent = res.text || 'Erro na requisição.';
+      return;
+    }
+    setStatus(status, 'ok', 'success');
+    out.textContent = JSON.stringify(res.json, null, 2);
   });
 
-  csvBtn.addEventListener('click', () => {
-    const fd = new FormData(form);
-    const obj = Object.fromEntries(fd.entries());
+  document.getElementById('csvBtn').addEventListener('click', () => {
+    const obj = Object.fromEntries(new FormData(form).entries());
     const screen = obj.screen || 'efficiency';
-    const q = qs(obj);
-    window.location = `/api/screens/${encodeURIComponent(screen)}.csv?${q}`;
+    window.location = `/api/screens/${encodeURIComponent(screen)}.csv?${qs(obj)}`;
   });
 </script>
 {% endblock %}

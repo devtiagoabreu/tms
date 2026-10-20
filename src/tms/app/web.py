@@ -15,6 +15,159 @@ router = APIRouter(tags=["web"])
 
 templates = Jinja2Templates(directory="src/tms/templates")
 
+NAV: tuple[dict, ...] = (
+    {
+        "label": "Visão geral",
+        "items": (
+            {
+                "href": "/",
+                "label": "Início",
+                "match": ("/",),
+                "desc": "Painel inicial com acesso a todas as áreas do TMS.",
+                "legacy": "Menu Principal",
+                "legacy_path": "tms/index.cgi",
+            },
+            {
+                "href": "/reports",
+                "label": "Relatórios",
+                "match": ("/reports",),
+                "desc": "Consulta consolidada por dia, semana ou mês, filtrando por máquina, intervalo de datas e unidade de medida.",
+                "legacy": "Relatorio de Turno / Relatorio por Operador",
+                "legacy_path": "tms/shift/select_s.cgi · tms/operator/select_p.cgi",
+            },
+            {
+                "href": "/telas",
+                "label": "Telas",
+                "match": ("/telas",),
+                "desc": "Formulário único que consulta qualquer tela do sistema sem trocar de página.",
+                "legacy": "Menu Principal",
+                "legacy_path": "tms/index.cgi",
+            },
+            {
+                "href": "/monitor",
+                "label": "Monitor",
+                "match": ("/monitor",),
+                "desc": "Situação das máquinas em tempo real: estado, eficiência, paradas e leitura direta da rede.",
+                "legacy": "Display Operacao",
+                "legacy_path": "tms/loom/opestate.cgi",
+            },
+        ),
+    },
+    {
+        "label": "Telas de produção",
+        "items": (
+            {
+                "href": "/screens/efficiency",
+                "label": "Eficiência",
+                "match": ("/screens/efficiency",),
+                "desc": "Eficiência por loom ou operador, com tempo de roda, parada e fios de urdume e trama.",
+                "legacy": "Grafico de Eficiencia",
+                "legacy_path": "tms/shift/select_s.cgi?mode=efficiency",
+            },
+            {
+                "href": "/screens/production",
+                "label": "Produção",
+                "match": ("/screens/production",),
+                "desc": "Quantidade produzida por loom ou operador no período selecionado.",
+                "legacy": "Grafico de Producao",
+                "legacy_path": "tms/shift/select_s.cgi?mode=production",
+            },
+            {
+                "href": "/screens/stop-analysis",
+                "label": "Análise de Paradas",
+                "match": ("/screens/stop-analysis",),
+                "desc": "Ranking de paradas por causa, medido em contagem de eventos ou em tempo.",
+                "legacy": "Grafico de Analise de Paradas",
+                "legacy_path": "tms/shift/select_s.cgi?mode=stopanalysis",
+            },
+            {
+                "href": "/screens/shiftreport",
+                "label": "Relatório de Turno",
+                "match": ("/screens/shiftreport",),
+                "desc": "Indicadores consolidados de cada turno, agrupados por loom ou estilo.",
+                "legacy": "Relatorio de Turno",
+                "legacy_path": "tms/shift/select_s.cgi?mode=shiftreport",
+            },
+            {
+                "href": "/screens/stylereport",
+                "label": "Relatório de Artigo",
+                "match": ("/screens/stylereport",),
+                "desc": "Desempenho por artigo (estilo) de tecido, com unidade e tipo de feixe.",
+                "legacy": "Relatorio de Artigo",
+                "legacy_path": "tms/shift/select_s.cgi?mode=stylereport",
+            },
+            {
+                "href": "/screens/showstyle",
+                "label": "Histórico de Artigos",
+                "match": ("/screens/showstyle",),
+                "desc": "Sequência de artigos processados por loom ou estilo, por turno ou operador.",
+                "legacy": "Mostrar Historico de Artigos",
+                "legacy_path": "tms/edit/showstyle.cgi",
+            },
+        ),
+    },
+    {
+        "label": "Históricos",
+        "items": (
+            {
+                "href": "/screens/statushistory",
+                "label": "Histórico",
+                "match": ("/screens/statushistory",),
+                "desc": "Evolução do status do equipamento ao longo do período, por loom ou estilo.",
+                "legacy": "Historico",
+                "legacy_path": "tms/shift/select_s.cgi?mode=statushistory",
+            },
+            {
+                "href": "/screens/stophistory",
+                "label": "Histórico de Paradas",
+                "match": ("/screens/stophistory",),
+                "desc": "Registro detalhado de cada parada com causa e duração dentro do intervalo informado.",
+                "legacy": "Historico de Parada",
+                "legacy_path": "tms/shift/stophistory.cgi",
+            },
+            {
+                "href": "/screens/svsreport",
+                "label": "Relatório de Serviço",
+                "match": ("/screens/svsreport",),
+                "desc": "Relatório de serviço do turno, com seleção por loom ou estilo e tipo de feixe.",
+                "legacy": "Dados Relatorio Servico",
+                "legacy_path": "tms/shift2/select_s2.cgi?mode=svsreport",
+            },
+        ),
+    },
+    {
+        "label": "Sistema",
+        "items": (
+            {
+                "href": "/machines",
+                "label": "Máquinas",
+                "match": ("/machines",),
+                "desc": "Cadastro dos equipamentos com IP e situação, e leitura do snapshot de cada loom.",
+                "legacy": "Coleta de Dados(Rede)",
+                "legacy_path": "tms/loom/getdata.cgi",
+            },
+            {
+                "href": "/config",
+                "label": "Configurações",
+                "match": ("/config",),
+                "desc": "Edita faixas de IP, lista de artigos, definição de turno e preferências de relatório.",
+                "legacy": "Ajuste de Relatorio / Ajuste Artigo / Trocar Ajuste Cronograma",
+                "legacy_path": "tms/setting/selitem.cgi · tms/scanset/styleset.cgi",
+            },
+            {
+                "href": "/docs",
+                "label": "API /docs",
+                "match": ("/docs",),
+                "desc": "Documentação interativa dos endpoints JSON e CSV que substituem os CGIs do sistema legado.",
+                "legacy": "—",
+                "legacy_path": "substitui os CGIs de tms.zip",
+            },
+        ),
+    },
+)
+
+templates.env.globals["nav"] = NAV
+
 
 @router.get("/", response_class=HTMLResponse)
 def index_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
@@ -78,47 +231,47 @@ def monitor_page_html(request: Request, db: Session = Depends(get_db)) -> HTMLRe
 
 @router.get("/screens/efficiency", response_class=HTMLResponse)
 def screen_efficiency(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "screens/efficiency.html", {"title": "TMS - Efficiency", "version": __version__})
+    return templates.TemplateResponse(request, "screens/efficiency.html", {"title": "TMS - Eficiência", "version": __version__})
 
 
 @router.get("/screens/production", response_class=HTMLResponse)
 def screen_production(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "screens/production.html", {"title": "TMS - Production", "version": __version__})
+    return templates.TemplateResponse(request, "screens/production.html", {"title": "TMS - Produção", "version": __version__})
 
 
 @router.get("/screens/stop-analysis", response_class=HTMLResponse)
 def screen_stopanalysis(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "screens/stopanalysis.html", {"title": "TMS - Stop Analysis", "version": __version__})
+    return templates.TemplateResponse(request, "screens/stopanalysis.html", {"title": "TMS - Análise de Paradas", "version": __version__})
 
 
 @router.get("/screens/shiftreport", response_class=HTMLResponse)
 def screen_shiftreport(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "screens/shiftreport.html", {"title": "TMS - Shift Report", "version": __version__})
+    return templates.TemplateResponse(request, "screens/shiftreport.html", {"title": "TMS - Relatório de Turno", "version": __version__})
 
 
 @router.get("/screens/stylereport", response_class=HTMLResponse)
 def screen_stylereport(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "screens/stylereport.html", {"title": "TMS - Style Report", "version": __version__})
+    return templates.TemplateResponse(request, "screens/stylereport.html", {"title": "TMS - Relatório de Artigo", "version": __version__})
 
 
 @router.get("/screens/statushistory", response_class=HTMLResponse)
 def screen_statushistory(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "screens/statushistory.html", {"title": "TMS - Status History", "version": __version__})
+    return templates.TemplateResponse(request, "screens/statushistory.html", {"title": "TMS - Histórico de Status", "version": __version__})
 
 
 @router.get("/screens/svsreport", response_class=HTMLResponse)
 def screen_svsreport(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "screens/svsreport.html", {"title": "TMS - SVS Report", "version": __version__})
+    return templates.TemplateResponse(request, "screens/svsreport.html", {"title": "TMS - Relatório de Serviço", "version": __version__})
 
 
 @router.get("/screens/stophistory", response_class=HTMLResponse)
 def screen_stophistory(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "screens/stophistory.html", {"title": "TMS - Stop History", "version": __version__})
+    return templates.TemplateResponse(request, "screens/stophistory.html", {"title": "TMS - Histórico de Paradas", "version": __version__})
 
 
 @router.get("/screens/showstyle", response_class=HTMLResponse)
 def screen_showstyle(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "screens/showstyle.html", {"title": "TMS - Show Style", "version": __version__})
+    return templates.TemplateResponse(request, "screens/showstyle.html", {"title": "TMS - Histórico de Artigos", "version": __version__})
 
 
 @router.get("/machines", response_class=HTMLResponse)

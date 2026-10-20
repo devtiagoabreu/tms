@@ -1,22 +1,94 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Stop Analysis</h2>
-<p class="muted">/api/screens/stop-analysis (count/time)</p>
+<div class="page-head">
+  <h1 class="page-title">Análise de Paradas</h1>
+  <p class="page-sub">Análise de paradas por contagem ou tempo — <code>/api/screens/stop-analysis</code></p>
+</div>
+
 <div class="card">
+  <div class="card-head">
+    <h2 class="card-title">Filtros</h2>
+  </div>
   <form id="f" class="form-row">
-    <label>period <select name="period"><option value="day">day</option><option value="shift">shift</option><option value="week">week</option><option value="month">month</option></select></label>
-    <label>mode <select name="mode"><option value="shift">shift</option><option value="operator">operator</option></select></label>
-    <label>beam <select name="beam_type"><option value="1">1</option><option value="2">2</option></select></label>
-    <label>value <select name="value"><option value="count">count</option><option value="time">time</option></select></label>
-    <label>key <input name="key"></label><label>mac <input name="mac_name"></label>
-    <button>buscar</button><button type="button" id="csv">CSV</button>
+    <div class="field">
+      <label for="period">Período</label>
+      <select id="period" name="period">
+        <option value="day">day</option>
+        <option value="shift">shift</option>
+        <option value="week">week</option>
+        <option value="month">month</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="mode">Modo</label>
+      <select id="mode" name="mode">
+        <option value="shift">shift</option>
+        <option value="operator">operator</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="beam_type">Beam</label>
+      <select id="beam_type" name="beam_type">
+        <option value="1">1</option>
+        <option value="2">2</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="value">Valor</label>
+      <select id="value" name="value">
+        <option value="count">count</option>
+        <option value="time">time</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="key">Key</label>
+      <input id="key" name="key" placeholder="2025.10.01">
+    </div>
+    <div class="field">
+      <label for="mac_name">Mac</label>
+      <input id="mac_name" name="mac_name" placeholder="00001">
+    </div>
+    <div class="field">
+      <label>&nbsp;</label>
+      <div class="row">
+        <button class="btn btn-primary" type="submit">Buscar</button>
+        <button class="btn" type="button" id="csv">CSV</button>
+      </div>
+    </div>
   </form>
 </div>
-<div class="card"><pre id="out"></pre></div>
+
+<div class="card">
+  <div class="card-head">
+    <h2 class="card-title">Resposta</h2>
+    <div class="status-line" id="st" style="margin:0"></div>
+  </div>
+  <pre id="out">Execute uma busca para ver o resultado.</pre>
+</div>
+
 <script type="module">
-  import {qs,fetchJSON} from '/static/js/tms.js';
-  const f=document.getElementById('f'), out=document.getElementById('out');
-  f.onsubmit=async e=>{e.preventDefault();const q=qs(Object.fromEntries(new FormData(f)));const r=await fetchJSON(`/api/screens/stop-analysis?${q}`);out.textContent=JSON.stringify(r.json,null,2);};
-  document.getElementById('csv').onclick=()=>window.location=`/api/screens/stop-analysis.csv?${qs(Object.fromEntries(new FormData(f)))}`;
+  import { qs, fetchJSON, setStatus } from '/static/js/tms.js';
+
+  const f = document.getElementById('f');
+  const out = document.getElementById('out');
+  const st = document.getElementById('st');
+
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const q = qs(Object.fromEntries(new FormData(f)));
+    setStatus(st, 'carregando…');
+    const r = await fetchJSON(`/api/screens/stop-analysis?${q}`);
+    if (!r.ok) {
+      setStatus(st, `erro ${r.status}`, 'danger');
+      out.textContent = r.text || 'Erro na requisição.';
+      return;
+    }
+    setStatus(st, 'ok', 'success');
+    out.textContent = JSON.stringify(r.json, null, 2);
+  };
+
+  document.getElementById('csv').onclick = () => {
+    window.location = `/api/screens/stop-analysis.csv?${qs(Object.fromEntries(new FormData(f)))}`;
+  };
 </script>
 {% endblock %}

@@ -5,33 +5,68 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title or 'TMS' }}</title>
   <link rel="stylesheet" href="/static/css/style.css">
-  <script type="module" src="/static/js/tms.js"></script>
+  <script>try{var t=localStorage.getItem('tms-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 </head>
 <body>
-  <header>
-    <h1>TMS</h1>
-    <nav>
-      <a href="/">Início</a>
-      <a href="/reports">Relatórios</a>
-      <a href="/telas">Telas</a>
-      <a href="/screens/efficiency">Efficiency</a>
-      <a href="/screens/production">Production</a>
-      <a href="/screens/stop-analysis">Stop Analysis</a>
-      <a href="/screens/shiftreport">Shift Report</a>
-      <a href="/screens/stylereport">Style Report</a>
-      <a href="/screens/statushistory">Status History</a>
-      <a href="/screens/svsreport">SVS Report</a>
-      <a href="/screens/stophistory">Stop History</a>
-      <a href="/screens/showstyle">Show Style</a>
-      <a href="/machines">Máquinas</a>
-      <a href="/config">Configurações</a>
-      <a href="/monitor">Monitor</a>
-      <a href="/docs" target="_blank" rel="noopener">API /docs</a>
-    </nav>
-    <span class="muted">v{{ version }}</span>
+<div class="shell">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <button class="icon-btn sidebar-toggle" id="navToggle" aria-label="Menu">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+          <path d="M2 4h12M2 8h12M2 12h12"/>
+        </svg>
+      </button>
+      <a class="brand" href="/">
+        <span class="brand-mark">TM</span>
+        <span>TMS</span>
+      </a>
+      <span class="topbar-spacer"></span>
+      <span class="topbar-version">v{{ version }}</span>
+      <button class="icon-btn" id="themeToggle" aria-label="Alternar tema">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+          <circle cx="8" cy="8" r="3.2"/>
+          <path d="M8 1v1.6M8 13.4V15M15 8h-1.6M2.6 8H1M12.95 3.05l-1.13 1.13M4.18 11.82l-1.13 1.13M12.95 12.95l-1.13-1.13M4.18 4.18L3.05 3.05"/>
+        </svg>
+      </button>
+    </div>
   </header>
-  <main class="container">
-    {% block content %}{% endblock %}
-  </main>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      {% set path = request.url.path if request else '/' %}
+      <nav>
+        {% for group in nav %}
+        <div class="nav-group">
+          <div class="nav-label">{{ group.label }}</div>
+          {% for item in group['items'] %}
+          {% set is_active = path in item['match'] %}
+          <a class="nav-item {% if is_active %}active{% endif %}"
+             href="{{ item.href }}"
+             {% if item.href == '/docs' %}target="_blank" rel="noopener"{% endif %}>
+            <span class="dot"></span>
+            <span class="nav-text">{{ item.label }}</span>
+            <span class="nav-tip" role="tooltip">
+              <span class="nav-tip-desc">{{ item.desc }}</span>
+              <span class="nav-tip-row">
+                <span class="nav-tip-key">Menu legado</span>
+                <span class="nav-tip-val">{{ item.legacy }}</span>
+              </span>
+              {% if item.legacy_path and item.legacy_path != '—' %}
+              <span class="nav-tip-path">{{ item.legacy_path }}</span>
+              {% endif %}
+            </span>
+          </a>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </nav>
+    </aside>
+
+    <main>
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+<script type="module" src="/static/js/tms.js"></script>
 </body>
 </html>

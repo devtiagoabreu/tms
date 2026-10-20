@@ -1,41 +1,78 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Máquinas</h2>
-<p class="muted">Listagem e último snapshot.</p>
-
-<div class="card">
-  <button id="load">Carregar</button>
-  <div class="muted" id="status"></div>
+<div class="page-head">
+  <h1 class="page-title">Máquinas</h1>
+  <p class="page-sub">Equipamentos cadastrados e seus snapshots — <code>/api/machines</code></p>
 </div>
 
 <div class="card">
-  <table>
-    <thead>
-      <tr><th>mac_name</th><th>mac_type</th><th>ip_addr</th><th>active</th><th>snapshot</th></tr>
-    </thead>
-    <tbody id="tb"></tbody>
-  </table>
+  <div class="card-head">
+    <h2 class="card-title">Equipamentos</h2>
+    <div class="row">
+      <div class="status-line" id="status" style="margin:0"></div>
+      <button class="btn btn-primary" id="load">Carregar</button>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Mac</th><th>Tipo</th><th>IP</th><th>Ativa</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="tb">
+        <tr><td colspan="5" class="muted">Clique em Carregar para listar as máquinas.</td></tr>
+      </tbody>
+    </table>
+  </div>
 </div>
 
-<pre id="snap"></pre>
+<div class="card">
+  <div class="card-head">
+    <h2 class="card-title">Snapshot</h2>
+  </div>
+  <pre id="snap">Nenhum snapshot selecionado.</pre>
+</div>
 
 <script type="module">
-  import { fetchJSON, fmtDate } from '/static/js/tms.js';
-  const tb=document.getElementById('tb'), status=document.getElementById('status'), snap=document.getElementById('snap');
-  document.getElementById('load').onclick=load;
-  async function load(){
-    status.textContent='...'; tb.innerHTML='';
-    const r=await fetchJSON('/api/machines');
-    status.textContent=r.ok?`${r.json.length} máquinas`:`erro ${r.status}`;
-    (r.json||[]).forEach(m=>{
-      const tr=document.createElement('tr');
-      tr.innerHTML=`<td>${m.mac_name}</td><td>${m.mac_type}</td><td>${m.ip_addr||'-'}</td><td>${m.active}</td><td><button data-m="${m.mac_name}">ver</button></td>`;
+  import { fetchJSON, esc, setStatus } from '/static/js/tms.js';
+
+  const tb = document.getElementById('tb');
+  const status = document.getElementById('status');
+  const snap = document.getElementById('snap');
+
+  document.getElementById('load').onclick = load;
+
+  async function load() {
+    setStatus(status, 'carregando…');
+    const r = await fetchJSON('/api/machines');
+    if (!r.ok) {
+      setStatus(status, `erro ${r.status}`, 'danger');
+      tb.innerHTML = '<tr><td colspan="5" class="muted">Erro ao carregar máquinas</td></tr>';
+      return;
+    }
+
+    const rows = r.json || [];
+    setStatus(status, `${rows.length} máquina${rows.length === 1 ? '' : 's'}`, 'success');
+    tb.innerHTML = rows.length ? '' : '<tr><td colspan="5" class="muted">Sem máquinas</td></tr>';
+
+    rows.forEach((m) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = [
+        `<td>${esc(m.mac_name)}</td>`,
+        `<td>${esc(m.mac_type)}</td>`,
+        `<td>${esc(m.ip_addr) || '-'}</td>`,
+        `<td>${m.active ? '<span class="badge badge-success">ativa</span>' : '<span class="badge">inativa</span>'}</td>`,
+        `<td class="text-right"><button class="btn btn-sm" data-m="${esc(m.mac_name)}">ver snapshot</button></td>`,
+      ].join('');
       tb.appendChild(tr);
     });
-    tb.querySelectorAll('button[data-m]').forEach(b=>{
-      b.onclick=async()=>{
-        const s=await fetchJSON(`/api/machines/${b.dataset.m}/snapshot`);
-        snap.textContent=JSON.stringify(s.json,null,2);
+
+    tb.querySelectorAll('button[data-m]').forEach((b) => {
+      b.onclick = async () => {
+        snap.textContent = 'Carregando…';
+        const s = await fetchJSON(`/api/machines/${encodeURIComponent(b.dataset.m)}/snapshot`);
+        snap.textContent = s.ok ? JSON.stringify(s.json, null, 2) : `Erro ${s.status}`;
       };
     });
   }
