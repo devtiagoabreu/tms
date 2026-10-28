@@ -1,0 +1,56 @@
+INFO:     127.0.0.1:64246 - "GET /monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64254 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65194 - "GET /api/monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65203 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65210 - "GET /monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65247 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58361 - "GET /api/monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58366 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58409 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55741 - "GET /api/monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55754 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55796 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51887 - "GET /api/monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51909 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51950 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52439 - "GET /api/monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52461 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52502 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50662 - "GET /api/monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50682 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50719 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64898 - "GET /api/monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64913 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64948 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56714 - "GET /api/monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56717 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56758 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53204 - "GET /api/monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53213 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60709 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49382 - "GET /api/monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50084 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51769 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62753 - "GET /api/monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62775 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62816 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63025 - "GET /api/monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63047 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63098 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63119 - "GET /monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61011 - "GET /api/monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61033 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61035 - "GET /monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61077 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60288 - "GET /api/monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60309 - "GET /monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60311 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60350 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60358 - "GET /monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64310 - "GET /api/monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64322 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64361 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62977 - "GET /api/monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62980 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63021 - "GET /monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63024 - "GET /health HTTP/1.1" 404 Not Found

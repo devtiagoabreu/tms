@@ -61,21 +61,26 @@
 
 <div class="card">
   <div class="card-head">
-    <h2 class="card-title">Resultados</h2>
+    <div>
+      <h2 class="card-title">Resultados</h2>
+      <p class="muted" style="margin:4px 0 0;font-size:0.8125rem">Dados filtrados por período</p>
+    </div>
     <div class="status-line" id="status" style="margin:0"></div>
   </div>
-  <div class="table-wrap">
-    <table id="table">
-      <thead>
-        <tr>
-          <th>Period</th><th>Key</th><th>Mac</th><th>Type</th><th>Style</th>
-          <th class="text-right">Prod</th><th class="text-right">Effic</th><th class="text-right">RPM</th>
-          <th class="text-right">Run</th><th class="text-right">Stop</th><th class="text-right">Total CT</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-      <tfoot></tfoot>
-    </table>
+  <div class="card-body">
+    <div class="table-wrap">
+      <table id="table">
+        <thead>
+          <tr>
+            <th>Período</th><th>Key</th><th>MAC</th><th>Tipo</th><th>Artigo</th>
+            <th class="text-right">Produção</th><th class="text-right">Eficiência</th><th class="text-right">RPM</th>
+            <th class="text-right">Rodando</th><th class="text-right">Parado</th><th class="text-right">Total CT</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot></tfoot>
+      </table>
+    </div>
   </div>
 </div>
 

@@ -2,18 +2,27 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from tms import __version__
+from tms.app.deps.auth import SESSION_COOKIE_NAME, get_current_user, require_user
+from tms.core.auth import create_session_token, verify_password
 from tms.db.base import get_db
+from tms.models.auth import User
 
-router = APIRouter(tags=["web"])
+public_router = APIRouter(tags=["web-public"])
+router = APIRouter(tags=["web"], dependencies=[Depends(require_user)])
 
-templates = Jinja2Templates(directory="src/tms/templates")
+from pathlib import Path
+templates_dir = Path(__file__).parent.parent / "templates"
+templates = Jinja2Templates(directory=str(templates_dir))
 
 NAV: tuple[dict, ...] = (
     {
@@ -221,7 +230,7 @@ def config_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse
 def monitor_page_html(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
-        "monitor.html",
+        "monitor_fixed.html",
         {
             "title": "TMS - Monitor",
             "version": __version__,
@@ -277,3 +286,46 @@ def screen_showstyle(request: Request) -> HTMLResponse:
 @router.get("/machines", response_class=HTMLResponse)
 def machines_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "machines.html", {"title": "TMS - Máquinas", "version": __version__})
+
+
+@public_router.get("/login", response_class=HTMLResponse)
+def login_page_get(request: Request, user: User | None = Depends(get_current_user)) -> HTMLResponse:
+    if user:
+        return RedirectResponse(url="/", status_code=303)
+    return templates.TemplateResponse(request, "auth/login.html", {"title": "Entrar • TMS", "version": __version__})
+
+
+@public_router.post("/login")
+async def login_page_post(request: Request, db: Session = Depends(get_db)):
+    form = await request.form()
+    email = (form.get("email") or "").strip()
+    password = (form.get("password") or "").strip()
+    if not email or not password:
+        return templates.TemplateResponse(
+            request,
+            "auth/login.html",
+            {"title": "Entrar • TMS", "version": __version__, "error": "Preencha e-mail/usuário e senha."},
+            status_code=400,
+        )
+    stmt = select(User).where((User.email == email) | (User.username == email))
+    user = db.execute(stmt).scalar_one_or_none()
+    if not user or not user.is_active or not verify_password(password, user.password_hash):
+        return templates.TemplateResponse(
+            request,
+            "auth/login.html",
+            {"title": "Entrar • TMS", "version": __version__, "error": "Usuário ou senha inválidos."},
+            status_code=401,
+        )
+    user.last_login_at = datetime.utcnow()
+    db.commit()
+    token = create_session_token(user.id)
+    resp = RedirectResponse(url="/", status_code=303)
+    resp.set_cookie(SESSION_COOKIE_NAME, token, httponly=True, samesite="lax", max_age=60 * 60 * 8, path="/")
+    return resp
+
+
+@public_router.get("/logout")
+def logout_page():
+    resp = RedirectResponse(url="/login", status_code=303)
+    resp.delete_cookie(SESSION_COOKIE_NAME, path="/")
+    return resp

@@ -1,6 +1,7 @@
-"""Modelos ORM. Schema proposto em docs/migracao/07-plano-migracao-python.md §3."""
+"""Modelos ORM."""
 
 from tms.db.base import Base
+from tms.models.auth import User, UserRole
 from tms.models.masters import (
     IpRange,
     Machine,
@@ -34,4 +35,6 @@ __all__ = [
     "ShiftSchedule",
     "StopEvent",
     "Style",
+    "User",
+    "UserRole",
 ]

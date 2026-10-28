@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-br" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Entrar • TMS</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script>try{var t=localStorage.getItem('tms-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+  <div class="auth-shell">
+    <main class="auth-main">
+      <div class="auth-card" role="region" aria-labelledby="auth-title">
+        <header class="auth-header">
+          <div class="brand">
+            <span class="brand-mark">TM</span>
+            <span>TMS</span>
+          </div>
+          <p class="auth-sub">Toyota Loom Monitoring System</p>
+          <h1 id="auth-title" class="page-title" style="font-size:1.25rem;margin-top:var(--sp-2);">Entrar</h1>
+        </header>
+
+        {% if error %}
+        <div style="padding:0 var(--sp-6);">
+          <div class="auth-alert auth-alert-danger" role="alert" aria-live="polite">
+            <span>{{ error }}</span>
+          </div>
+        </div>
+        {% endif %}
+
+        <form class="auth-form" method="post" action="/login" novalidate>
+          <div class="field">
+            <label for="email">E-mail ou usuário</label>
+            <input id="email" name="email" type="text" inputmode="email" autocomplete="username" autocapitalize="off" spellcheck="false" required placeholder="Digite seu e-mail ou usuário">
+          </div>
+
+          <div class="field">
+            <label for="password">Senha</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="Digite sua senha">
+          </div>
+
+          <button class="btn btn-primary auth-submit" type="submit">Entrar</button>
+        </form>
+
+        <footer class="auth-footer">
+          <span class="muted">v{{ version }}</span>
+        </footer>
+      </div>
+    </main>
+  </div>
+  <script type="module" src="/static/js/tms.js"></script>
+</body>
+</html>

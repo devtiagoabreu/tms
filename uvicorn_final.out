@@ -1,0 +1,4 @@
+INFO:     127.0.0.1:53497 - "GET /api/monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53499 - "GET /monitor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53521 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53523 - "GET /monitor HTTP/1.1" 200 OK

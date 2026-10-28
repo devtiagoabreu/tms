@@ -28,7 +28,7 @@ def monitor(
     offline_after_s: int = Query(DEFAULT_OFFLINE_AFTER_S, ge=0),
     lang: str = Query("pt"),
     live: bool = Query(False, description="coleta o estado direto dos teares (lento)"),
-    stored: bool = Query(False, description="usa o último status ao vivo persistido"),
+    stored: bool = Query(True, description="usa o último status ao vivo persistido"),
     timeout: float = Query(DEFAULT_TIMEOUT, gt=0),
     db: Session = Depends(get_db),
 ) -> list[MonitorItemOut]:
