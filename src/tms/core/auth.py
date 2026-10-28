@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 from typing import Any, Optional
 
+import bcrypt
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 SECRET_KEY = os.getenv("TMS_SECRET_KEY", "tms-dev-secret-change-me")
@@ -13,30 +14,16 @@ SESSION_MAX_AGE_SECONDS = 60 * 60 * 8
 
 serializer = URLSafeTimedSerializer(SECRET_KEY, salt=SESSION_SALT)
 
-try:
-    from passlib.context import CryptContext
 
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
-    def hash_password(password: str) -> str:
-        return pwd_context.hash(password)
 
-    def verify_password(plain_password: str, hashed_password: str) -> bool:
-        try:
-            return pwd_context.verify(plain_password, hashed_password)
-        except Exception:
-            return False
-except Exception:
-    import bcrypt
-
-    def hash_password(password: str) -> str:
-        return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-
-    def verify_password(plain_password: str, hashed_password: str) -> bool:
-        try:
-            return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
-        except Exception:
-            return False
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    try:
+        return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+    except Exception:
+        return False
 
 
 def create_session_token(user_id: int) -> str:

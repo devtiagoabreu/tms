@@ -16,6 +16,8 @@ from tms.app.deps.auth import SESSION_COOKIE_NAME, get_current_user, require_use
 from tms.core.auth import create_session_token, verify_password
 from tms.db.base import get_db
 from tms.models.auth import User
+from tms.models.daily import DailyCollectionItem, DailyCollectionRun, DailyLoomData
+from tms.services.daily_collection import get_yesterday
 
 public_router = APIRouter(tags=["web-public"])
 router = APIRouter(tags=["web"], dependencies=[Depends(require_user)])
@@ -30,9 +32,9 @@ NAV: tuple[dict, ...] = (
         "items": (
             {
                 "href": "/",
-                "label": "Início",
+                "label": "Dashboard",
                 "match": ("/",),
-                "desc": "Painel inicial com acesso a todas as áreas do TMS.",
+                "desc": "Dashboard diário: dados coletados dos teares no dia anterior, teares que faltaram e fila de retentativa.",
                 "legacy": "Menu Principal",
                 "legacy_path": "tms/index.cgi",
             },
@@ -180,12 +182,67 @@ templates.env.globals["nav"] = NAV
 
 @router.get("/", response_class=HTMLResponse)
 def index_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    target = get_yesterday()
+    run = db.execute(
+        select(DailyCollectionRun).where(DailyCollectionRun.collection_date == target)
+    ).scalar_one_or_none()
+
+    items, looms = [], []
+    if run is not None:
+        items = list(
+            db.execute(
+                select(DailyCollectionItem)
+                .where(DailyCollectionItem.run_id == run.id)
+                .order_by(DailyCollectionItem.mac_name)
+            ).scalars()
+        )
+        looms = list(
+            db.execute(
+                select(DailyLoomData)
+                .where(DailyLoomData.collection_date == target)
+                .order_by(DailyLoomData.mac_name)
+            ).scalars()
+        )
+
+    missing = [i for i in items if i.status != "success"]
+    efficiencies = [r.efficiency for r in looms if r.efficiency is not None]
+    rpms = [r.rpm for r in looms if r.rpm is not None]
+
+    def total(attr: str):
+        values = [getattr(r, attr) for r in looms if getattr(r, attr) is not None]
+        return round(sum(values), 1) if values else None
+
+    summary = {
+        "collected": len(looms),
+        "missing": len(missing),
+        "avg_efficiency": round(sum(efficiencies) / len(efficiencies), 1) if efficiencies else None,
+        "avg_rpm": round(sum(rpms) / len(rpms), 1) if rpms else None,
+        "total_stops": total("total_stop_ct") or 0,
+        "breakdown_known": any(
+            r.trama_stops is not None or r.urdume_stops is not None or r.outros_stops is not None
+            for r in looms
+        ),
+        "trama_stops": total("trama_stops"),
+        "urdume_stops": total("urdume_stops"),
+        "outros_stops": total("outros_stops"),
+        "trama_min": total("trama_stops_min"),
+        "urdume_min": total("urdume_stops_min"),
+        "outros_min": total("outros_stops_min"),
+    }
+
     return templates.TemplateResponse(
         request,
         "index.html",
         {
-            "title": "TMS - Painel",
+            "title": "TMS - Dashboard",
             "version": __version__,
+            "target_date": target,
+            "run": run,
+            "items": items,
+            "looms": looms,
+            "missing": missing,
+            "summary": summary,
+            "current_user": getattr(request.state, "user", None),
         },
     )
 

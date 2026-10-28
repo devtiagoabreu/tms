@@ -40,6 +40,30 @@ pytest
 
 API: `GET /api/health` · OpenAPI: `/docs`
 
+## Autenticação e papéis
+
+Todo o sistema (páginas HTML e `/api/*`) exige login. A sessão é um cookie
+`HttpOnly`/`SameSite=Lax` assinado com `itsdangerous` (`TMS_SECRET_KEY`, com
+default de desenvolvimento — **troque em produção**); a senha é guardada como
+hash `bcrypt`.
+
+| Papel | Pode |
+|---|---|
+| `admin` | tudo, incluindo disparar coleta/retentativa e editar configurações |
+| `operador` | consultar telas, relatórios e monitor |
+| `visualizador` | somente leitura |
+
+Rotas públicas: `/login`, `/logout`, `/static`, `/docs`, `/openapi.json` e
+`/redoc`. Sem sessão, páginas redirecionam (303) para `/login` e chamadas
+`/api/*` recebem `401 {"detail": "Não autenticado"}`.
+
+Usuário inicial (executar uma vez, depois de `alembic upgrade head`):
+
+```bash
+PYTHONPATH=src python -m tms.cli.create_admin
+# admin@tms.local / admin  — troque a senha em produção
+```
+
 ## Ingestão dos dados legados (Fase 1)
 
 Lê um diretório `tmsdata/` (com `current/`, `shift/`, `stop_history/`) e faz
@@ -79,7 +103,12 @@ Somente leitura, paginada (`limit` ≤ 1000, `offset`) e filtrável por tear/dia
 | `GET\|PUT /api/settings/value/{key}` | chave avulsa (`language`, `scanner_ip`, `memcard`…) |
 | `GET /api/screens/{efficiency\|production\|stop-analysis\|shiftreport\|stylereport\|statushistory\|svsreport\|stophistory\|showstyle}` | `period`, `mode`, `key`, `mac_name`, `day_from`, `day_to`, `week_start`, `min_run_tm`, `min_effic` (+ `unit`/`beam_type`; shiftreport tem `sel=loom\|style`; statushistory/svsreport têm `sel_mode=loom\|style` com listas `loom`/`style`; stophistory filtra por datas/tear; showstyle tem `data=shift\|operator`; sem `period` usa o selitem) |
 | `GET /api/screens/{efficiency\|production\|stop-analysis\|shiftreport\|stylereport\|statushistory\|svsreport\|stophistory\|showstyle}.csv` | idem; stop-analysis usa `value=count\|time` |
+| `GET /api/daily` | dashboard do dia: `day` (default = ontem), resumo, dados por tear e fila de retentativa |
+| `GET /api/daily/history` | execuções de coleta anteriores (`limit`) |
+| `POST /api/daily/collect` | dispara a coleta do dia anterior (`day`, `force`) — **admin** |
+| `POST /api/daily/retry` | reprocessa a fila de teares inalcançáveis (`day`) — **admin** |
 | `GET /monitor` | dashboard HTML que consome `/api/monitor` (auto-refresh 30s) |
+| `GET /` | dashboard diário (HTML) com a coleta do dia anterior |
 
 Datas no formato legado `YYYY.MM.DD` (ex.: `2025.10.01`). OpenAPI em `/docs`.
 
@@ -159,6 +188,40 @@ PYTHONPATH=src python -m tms.collector --persist --loop --interval 60
 Sem nenhum deles, o estado é inferido do banco: frescura do snapshot →
 `offline`; parada em aberto no `stop_history` → `stopped`; senão `run`; sem
 snapshot → `no_data`.
+
+## Dashboard diário e coleta automática
+
+A rota `/` é o dashboard operacional do **dia anterior**. Ela é alimentada por
+`GET /api/daily` e mostra: teares coletados, teares faltantes, eficiência/RPM
+médios, paradas do dia (trama/urdume/outros, com quantidade e minutos) e a fila
+de retentativa com o motivo por tear.
+
+A coleta é executada uma única vez por dia, sempre para o dia anterior:
+
+- uma linha por data em `daily_collection_runs` (constraint
+  `uq_daily_collection_run_date`) — repetir a chamada não duplica nada;
+- após `COLLECTION_HOUR` (01:00), uma tarefa do lifespan roda a cada 30 minutos
+  e garante que a coleta do dia anterior exista;
+- `admin` pode forçar pelo dashboard ("Coletar agora") ou via
+  `POST /api/daily/collect?force=true`.
+
+Prioridade das fontes por tear (a coluna `source` registra a escolhida):
+`agg_shift` → `daily_raw` → histórico de `live_status` do dia → leitura ao vivo
+no momento da coleta. Para o detalhamento de paradas:
+
+- `agg_shift`/`daily_raw`: contagens e minutos exatos das 12 categorias;
+- histórico: a causa ativa de cada amostra é mapeada pelos bits do tear
+  (`BIT_PRECEDENCE`) em trama (`WEFT_MISS`, índice 5), urdume (`WARP_TOP` +
+  `WARP`, índices 0/1) e outros; os minutos vêm do intervalo entre amostras
+  (limitado a 5 min) e o total continua sendo o contador do próprio tear;
+- sem detalhamento disponível: a UI mostra o total do contador e o aviso
+  "sem detalhamento por causa" em vez de zeros falsos.
+
+Tear inalcançável (Power_off, timeout, IP ausente) não é coletado: o item fica
+`failed`, entra na fila de retentativa e aparece no dashboard como **faltante**,
+com o motivo. A fila é reprocessada a cada 15 minutos (`RETRY_INTERVAL`);
+`POST /api/daily/retry` força a tentativa imediata. As leituras de rede são
+feitas em paralelo (8 threads) para não somar timeouts em série.
 
 ## Relatórios — exportação CSV (Fase 3)
 

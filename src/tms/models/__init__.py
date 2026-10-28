@@ -2,6 +2,7 @@
 
 from tms.db.base import Base
 from tms.models.auth import User, UserRole
+from tms.models.daily import DailyCollectionItem, DailyCollectionRun, DailyLoomData
 from tms.models.masters import (
     IpRange,
     Machine,
@@ -23,6 +24,9 @@ from tms.models.runtime import (
 __all__ = [
     "AggShift",
     "Base",
+    "DailyCollectionItem",
+    "DailyCollectionRun",
+    "DailyLoomData",
     "DailyRaw",
     "IpRange",
     "LiveStatusRecord",
@@ -38,3 +42,4 @@ __all__ = [
     "User",
     "UserRole",
 ]
+

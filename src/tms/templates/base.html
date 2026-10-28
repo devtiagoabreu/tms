@@ -22,6 +22,19 @@
       </a>
       <span class="topbar-spacer"></span>
       <span class="topbar-version">v{{ version }}</span>
+      {% set current_user = request.state.user if request is defined else None %}
+      {% if current_user %}
+      <span class="user-chip" title="{{ current_user.email }}">
+        <span class="user-chip-name">{{ current_user.full_name or current_user.username or current_user.email }}</span>
+        <span class="user-chip-role">{{ current_user.role.value }}</span>
+        <a class="user-chip-out" href="/logout" aria-label="Sair" title="Sair">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 2H3.5A1.5 1.5 0 0 0 2 3.5v9A1.5 1.5 0 0 0 3.5 14H6"/>
+            <path d="M10.5 11 14 8l-3.5-3M14 8H6"/>
+          </svg>
+        </a>
+      </span>
+      {% endif %}
       <button class="icon-btn" id="themeToggle" aria-label="Alternar tema">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
           <circle cx="8" cy="8" r="3.2"/>

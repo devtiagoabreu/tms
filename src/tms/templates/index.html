@@ -1,50 +1,331 @@
 {% extends "base.html" %}
 {% block content %}
+{% set status_labels = {
+  'pending': 'Pendente',
+  'running': 'Em execução',
+  'completed': 'Concluída',
+  'partial': 'Parcial',
+  'failed': 'Falhou',
+} %}
+{% set status_tone = {
+  'completed': 'success',
+  'partial': 'warning',
+  'failed': 'danger',
+  'running': 'warning',
+  'pending': '',
+} %}
+{% set source_labels = {
+  'agg_shift': 'Agregado',
+  'daily_raw': 'Bruto',
+  'history': 'Histórico',
+  'live': 'Ao vivo',
+} %}
+
 <div class="page-head">
-  <h1 class="page-title">Início</h1>
-  <p class="page-sub">Toyota Loom Monitoring System — visão geral do sistema.</p>
-</div>
-
-<div class="grid">
-  {% for group in nav %}
-    {% if group.label == 'Visão geral' %}
-      {% for item in group['items'] if item.href != '/docs' %}
-      <a class="link-card" href="{{ item.href }}" {% if item.href == '/docs' %}target="_blank" rel="noopener"{% endif %}>
-        <h3>{{ item.label }}</h3>
-        <p>{{ item.desc }}</p>
-        <p class="muted" style="margin-top:var(--sp-3);font-family:var(--font-mono);font-size:0.6875rem">
-          legado: {{ item.legacy }}
-        </p>
-      </a>
-      {% endfor %}
+  <div class="row" style="justify-content:space-between;align-items:flex-start">
+    <div>
+      <h1 class="page-title">Dashboard diário</h1>
+      <p class="page-sub">
+        Coleta automática dos teares referente a
+        <strong>{{ target_date.strftime('%d/%m/%Y') }}</strong>
+        {% if run %}&middot; executada uma vez por dia{% endif %}
+      </p>
+    </div>
+    {% if current_user and current_user.role.value == 'admin' %}
+    <div class="row">
+      <button class="btn btn-sm" id="btnRetry" {% if not run or not run.retry_count %}disabled{% endif %}>
+        Repetir fila{% if run and run.retry_count %} ({{ run.retry_count }}){% endif %}
+      </button>
+      <button class="btn btn-sm btn-primary" id="btnCollect">Coletar agora</button>
+    </div>
     {% endif %}
-  {% endfor %}
+  </div>
 </div>
 
-<div class="card" style="margin-top:var(--sp-5)">
+{% if not run %}
+<div class="alert alert-warning">
+  <svg class="alert-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+    <circle cx="8" cy="8" r="6.4"/><path d="M8 4.8v3.6M8 11.2h.01"/>
+  </svg>
+  <div>
+    <p class="alert-title">Coleta ainda não executada</p>
+    <p>Nenhum resultado registrado para {{ target_date.strftime('%d/%m/%Y') }}. Use “Coletar agora” para iniciar a coleta do dia anterior.</p>
+  </div>
+</div>
+{% else %}
+
+{% if missing %}
+<div class="alert alert-danger">
+  <svg class="alert-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+    <circle cx="8" cy="8" r="6.4"/><path d="M8 4.8v3.6M8 11.2h.01"/>
+  </svg>
+  <div>
+    <p class="alert-title">
+      {{ missing|length }} tear{% if missing|length != 1 %}es{% endif %} sem coleta neste dia
+    </p>
+    <p>
+      Os teares abaixo estavam desligados ou fora da rede no momento da coleta e ficaram na fila
+      de retentativa. O sistema tenta novamente automaticamente a cada 15 minutos.
+    </p>
+    <ul class="missing-list">
+      {% for item in missing %}
+      <li class="missing-item" title="{{ item.error_reason or 'Sem detalhe' }}">{{ item.mac_name }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% elif run.status == 'completed' %}
+<div class="alert alert-success">
+  <svg class="alert-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="8" cy="8" r="6.4"/><path d="m5 8.2 2.2 2.2L11 6.4"/>
+  </svg>
+  <div>
+    <p class="alert-title">Coleta completa</p>
+    <p>Todos os {{ summary.collected }} teares ativos foram coletados para {{ target_date.strftime('%d/%m/%Y') }}.</p>
+  </div>
+</div>
+{% endif %}
+
+<div class="kpi-grid">
+  <div class="kpi kpi-accent">
+    <span class="kpi-label">Teares coletados</span>
+    <span class="kpi-value">{{ summary.collected }}<small> / {{ run.total_machines }}</small></span>
+    <span class="kpi-meta">{{ ((summary.collected / run.total_machines * 100) if run.total_machines else 0)|round(0)|int }}% do parque</span>
+  </div>
+  <div class="kpi {% if summary.missing %}kpi-bad{% else %}kpi-ok{% endif %}">
+    <span class="kpi-label">Faltando</span>
+    <span class="kpi-value">{{ summary.missing }}</span>
+    <span class="kpi-meta">{{ run.retry_count }} na fila de retentativa</span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-label">Eficiência média</span>
+    <span class="kpi-value">
+      {% if summary.avg_efficiency is not none %}{{ '%.1f'|format(summary.avg_efficiency) }}<small>%</small>{% else %}&mdash;{% endif %}
+    </span>
+    <span class="kpi-meta">média simples dos teares</span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-label">RPM médio</span>
+    <span class="kpi-value">
+      {% if summary.avg_rpm is not none %}{{ '%.0f'|format(summary.avg_rpm) }}{% else %}&mdash;{% endif %}
+    </span>
+    <span class="kpi-meta">rotações por minuto</span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-label">Paradas no dia</span>
+    <span class="kpi-value">{{ summary.total_stops }}</span>
+    <span class="kpi-meta">
+      {% if summary.breakdown_known %}
+      trama {{ summary.trama_stops or 0 }} &middot; urdume {{ summary.urdume_stops or 0 }} &middot; outros {{ summary.outros_stops or 0 }}
+      {% else %}
+      detalhamento por causa indisponível
+      {% endif %}
+    </span>
+  </div>
+</div>
+
+<div class="split-grid">
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h2 class="card-title">Paradas por tipo</h2>
+        <p class="muted" style="margin:4px 0 0;font-size:0.8125rem">Quantidade e minutos acumulados</p>
+      </div>
+    </div>
+    {% if summary.breakdown_known %}
+    {% set total_ct = summary.total_stops or 1 %}
+    <div class="stack">
+      <div class="meter">
+        <div class="meter-head">
+          <span class="meter-name">Trama (weft)</span>
+          <span class="meter-value">{{ summary.trama_stops or 0 }} paradas &middot; {{ '%.0f'|format(summary.trama_min or 0) }} min</span>
+        </div>
+        <div class="meter-track">
+          <div class="meter-fill is-trama" style="width: {{ ((summary.trama_stops or 0) / total_ct * 100)|round(1) }}%"></div>
+        </div>
+      </div>
+      <div class="meter">
+        <div class="meter-head">
+          <span class="meter-name">Urdume (warp)</span>
+          <span class="meter-value">{{ summary.urdume_stops or 0 }} paradas &middot; {{ '%.0f'|format(summary.urdume_min or 0) }} min</span>
+        </div>
+        <div class="meter-track">
+          <div class="meter-fill is-urdume" style="width: {{ ((summary.urdume_stops or 0) / total_ct * 100)|round(1) }}%"></div>
+        </div>
+      </div>
+      <div class="meter">
+        <div class="meter-head">
+          <span class="meter-name">Outros</span>
+          <span class="meter-value">{{ summary.outros_stops or 0 }} paradas &middot; {{ '%.0f'|format(summary.outros_min or 0) }} min</span>
+        </div>
+        <div class="meter-track">
+          <div class="meter-fill is-outros" style="width: {{ ((summary.outros_stops or 0) / total_ct * 100)|round(1) }}%"></div>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding:var(--sp-5) 0">
+      <h3>Sem detalhamento por causa</h3>
+      <p>
+        O dia não possui paradas classificadas por trama, urdume ou outros.
+        Total registrado pelos contadores dos teares: <strong>{{ summary.total_stops }}</strong> paradas.
+      </p>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h2 class="card-title">Execução da coleta</h2>
+        <p class="muted" style="margin:4px 0 0;font-size:0.8125rem">Chave primária por dia impede duplicidade</p>
+      </div>
+      <span class="badge badge-{{ status_tone.get(run.status, '') }}">{{ status_labels.get(run.status, run.status) }}</span>
+    </div>
+    <div class="run-meta" style="margin-top:0">
+      <span>Data coletada <strong>{{ run.collection_date.strftime('%d/%m/%Y') }}</strong></span>
+      <span>Início <strong>{{ run.started_at.strftime('%d/%m/%Y %H:%M') if run.started_at else '—' }}</strong></span>
+      <span>Fim <strong>{{ run.finished_at.strftime('%d/%m/%Y %H:%M') if run.finished_at else '—' }}</strong></span>
+    </div>
+    <div class="run-meta">
+      <span>Sucessos <strong class="success">{{ run.success_count }}</strong></span>
+      <span>Falhas <strong class="{{ 'error' if run.failed_count else '' }}">{{ run.failed_count }}</strong></span>
+      <span>Retentativas <strong class="{{ 'warning' if run.retry_count else '' }}">{{ run.retry_count }}</strong></span>
+      <span>Total de teares <strong>{{ run.total_machines }}</strong></span>
+    </div>
+  </div>
+</div>
+
+{% if missing %}
+<div class="card">
   <div class="card-head">
     <div>
-      <h2 class="card-title">Todas as telas</h2>
-      <p class="muted" style="margin:4px 0 0;font-size:0.8125rem">Consulta e navegação por módulos</p>
+      <h2 class="card-title">Fila de retentativa</h2>
+      <p class="muted" style="margin:4px 0 0;font-size:0.8125rem">Teares desligados ou fora da rede</p>
     </div>
-    <a class="btn btn-sm" href="/telas">Formulário único</a>
+    {% if current_user and current_user.role.value == 'admin' %}
+    <button class="btn btn-sm" id="btnRetryInline">Tentar novamente</button>
+    {% endif %}
   </div>
-  <div class="card-body">
-    <div class="grid">
-      {% for group in nav %}
-        {% if group.label != 'Visão geral' %}
-        {% for item in group['items'] if item.href != '/docs' %}
-        <a class="link-card" href="{{ item.href }}">
-          <h3>{{ item.label }}</h3>
-          <p>{{ item.desc }}</p>
-          <p class="muted" style="margin-top:var(--sp-3);font-family:var(--font-mono);font-size:0.6875rem">
-            legado: {{ item.legacy }}
-          </p>
-        </a>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Tear</th>
+          <th>Tipo</th>
+          <th>IP</th>
+          <th>Motivo</th>
+          <th class="text-right">Tentativas</th>
+          <th>Última tentativa</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in missing %}
+        <tr>
+          <td class="mono">{{ item.mac_name }}</td>
+          <td>{{ item.mac_type }}</td>
+          <td class="mono">{{ item.ip_addr or '—' }}</td>
+          <td class="error" style="white-space:normal">{{ item.error_reason or 'Sem detalhe' }}</td>
+          <td class="text-right">{{ item.attempts }}</td>
+          <td>{{ item.last_retry_at.strftime('%d/%m/%Y %H:%M') if item.last_retry_at else '—' }}</td>
+        </tr>
         {% endfor %}
-        {% endif %}
-      {% endfor %}
-    </div>
+      </tbody>
+    </table>
   </div>
 </div>
+{% endif %}
+
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h2 class="card-title">Dados coletados por tear</h2>
+      <p class="muted" style="margin:4px 0 0;font-size:0.8125rem">
+        {{ target_date.strftime('%d/%m/%Y') }} &middot; {{ looms|length }} tear{% if looms|length != 1 %}es{% endif %}
+      </p>
+    </div>
+    <span class="badge badge-{{ status_tone.get(run.status, '') }}">{{ status_labels.get(run.status, run.status) }}</span>
+  </div>
+  {% if looms %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Tear</th>
+          <th>Artigo</th>
+          <th class="text-right">RPM</th>
+          <th class="text-right">Eficiência</th>
+          <th class="text-right">Rodando</th>
+          <th class="text-right">Parado</th>
+          <th class="text-right">Paradas</th>
+          <th class="text-right">Trama</th>
+          <th class="text-right">Urdume</th>
+          <th class="text-right">Outros</th>
+          <th>Origem</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in looms %}
+        <tr>
+          <td class="mono">{{ row.mac_name }}</td>
+          <td>{{ row.style or '—' }}</td>
+          <td class="text-right">{{ '%.0f'|format(row.rpm) if row.rpm is not none else '—' }}</td>
+          <td class="text-right">{{ '%.1f'|format(row.efficiency) ~ '%' if row.efficiency is not none else '—' }}</td>
+          <td class="text-right">{{ '%.0f'|format(row.run_time_min) if row.run_time_min is not none else '—' }}</td>
+          <td class="text-right">{{ '%.0f'|format(row.stop_time_min) if row.stop_time_min is not none else '—' }}</td>
+          <td class="text-right">{{ row.total_stop_ct if row.total_stop_ct is not none else '—' }}</td>
+          <td class="text-right">{{ row.trama_stops if row.trama_stops is not none else '—' }}</td>
+          <td class="text-right">{{ row.urdume_stops if row.urdume_stops is not none else '—' }}</td>
+          <td class="text-right">{{ row.outros_stops if row.outros_stops is not none else '—' }}</td>
+          <td><span class="badge">{{ source_labels.get(row.source, row.source) }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <h3>Nenhum dado coletado</h3>
+    <p>Os teares ainda não retornaram dados para este dia. Verifique a fila de retentativa ou execute a coleta manualmente.</p>
+  </div>
+  {% endif %}
+</div>
+
+{% endif %}
+
+<div class="status-line" id="status" style="margin-top:var(--sp-4)"></div>
+
+<script type="module">
+  import { fetchJSON, setStatus } from '/static/js/tms.js';
+
+  const statusEl = document.getElementById('status');
+  const btnCollect = document.getElementById('btnCollect');
+  const buttons = [
+    btnCollect,
+    document.getElementById('btnRetry'),
+    document.getElementById('btnRetryInline'),
+  ].filter(Boolean);
+
+  async function post(url, label) {
+    buttons.forEach(b => (b.disabled = true));
+    setStatus(statusEl, label + '…', 'warning');
+    const { ok, status, json, text } = await fetchJSON(url, { method: 'POST' });
+    if (ok) {
+      setStatus(statusEl, 'Concluído. Atualizando…', 'success');
+      window.location.reload();
+      return;
+    }
+    const detail = (json && (json.detail || json.message)) || text || `HTTP ${status}`;
+    setStatus(statusEl, 'Falha: ' + detail, 'danger');
+    buttons.forEach(b => (b.disabled = false));
+  }
+
+  if (btnCollect) {
+    btnCollect.addEventListener('click', () => post('/api/daily/collect', 'Coletando teares'));
+  }
+  const retryButtons = [document.getElementById('btnRetry'), document.getElementById('btnRetryInline')].filter(Boolean);
+  retryButtons.forEach(btn => {
+    btn.addEventListener('click', () => post('/api/daily/retry', 'Reprocessando fila'));
+  });
+</script>
 {% endblock %}

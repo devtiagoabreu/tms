@@ -3,8 +3,7 @@ from __future__ import annotations
 
 from typing import Annotated, Optional
 
-from fastapi import Depends, Request
-from fastapi.responses import RedirectResponse
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from tms.app.deps.db import get_db
@@ -36,7 +35,9 @@ async def require_user(
     user: Annotated[Optional[User], Depends(get_current_user)],
 ) -> User:
     if user is None:
-        return RedirectResponse(url="/login", status_code=303)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Não autenticado"
+        )
     request.state.user = user
     return user
 
@@ -44,7 +45,10 @@ async def require_user(
 def require_roles(*roles: UserRole):
     async def _checker(user: Annotated[User, Depends(require_user)]) -> User:
         if user.role not in roles:
-            return RedirectResponse(url="/", status_code=303)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Acesso restrito a administradores",
+            )
         return user
 
     return _checker
