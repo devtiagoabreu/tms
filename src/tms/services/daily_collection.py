@@ -12,6 +12,10 @@ Regras de negocio
   **fila de retentativa** (``in_retry_queue``) e sao reprocessados depois, sem
   refazer a coleta dos teares que ja tiveram sucesso.
 * O dashboard lista explicitamente os teares que faltaram.
+* Dias sem coleta (aplicacao fora do ar) sao registrados como lacuna pelo
+  *backfill*: nunca se grava leitura ao vivo em dia passado — se nao houver
+  fonte historica, o item fica ``no_source`` e pode ser reavaliado quando o
+  dado agregado chegar.
 
 Fontes de dados (em ordem de prioridade)
 ========================================
@@ -19,7 +23,7 @@ Fontes de dados (em ordem de prioridade)
 1. ``agg_shift`` do dia anterior — dados agregados do legado (12 categorias).
 2. ``daily_raw`` do dia anterior — registro bruto do legado.
 3. Historico de ``live_status`` do dia anterior — medias de RPM/eficiencia.
-4. Leitura ao vivo do tear no momento da coleta.
+4. Leitura ao vivo do tear no momento da coleta (somente para o dia anterior).
 """
 
 from __future__ import annotations
@@ -316,27 +320,7 @@ def _metrics_from_live(live) -> dict:
 
 def _resolve_metrics(db: Session, machine: Machine, day: date, live) -> dict:
     """Combina as fontes disponiveis, priorizando o dado agregado do legado."""
-    day_key = day.strftime("%Y.%m.%d")
-
-    agg = db.execute(
-        select(AggShift)
-        .where(AggShift.machine_id == machine.id)
-        .where(AggShift.shift_id.like(f"{day_key}.%"))
-        .order_by(AggShift.shift_id.desc())
-    ).scalars().first()
-    if agg is not None:
-        metrics = _metrics_from_agg(agg)
-    else:
-        raw = db.execute(
-            select(DailyRaw)
-            .where(DailyRaw.machine_id == machine.id)
-            .where(DailyRaw.day == day_key)
-            .order_by(DailyRaw.shift_id.desc())
-        ).scalars().first()
-        if raw is not None:
-            metrics = _metrics_from_raw(raw, machine)
-        else:
-            metrics = _metrics_from_history(db, machine, day) or {"source": "live"}
+    metrics = _stored_metrics(db, machine, day) or {"source": "live"}
 
     live_metrics = _metrics_from_live(live)
     # Completa lacunas com a leitura ao vivo (sempre disponivel no sucesso).
@@ -348,8 +332,33 @@ def _resolve_metrics(db: Session, machine: Machine, day: date, live) -> dict:
     return metrics
 
 
+def _stored_metrics(db: Session, machine: Machine, day: date) -> Optional[dict]:
+    """Fontes historicas do dia: ``agg_shift`` → ``daily_raw`` → ``live_status``."""
+    day_key = day.strftime("%Y.%m.%d")
+
+    agg = db.execute(
+        select(AggShift)
+        .where(AggShift.machine_id == machine.id)
+        .where(AggShift.shift_id.like(f"{day_key}.%"))
+        .order_by(AggShift.shift_id.desc())
+    ).scalars().first()
+    if agg is not None:
+        return _metrics_from_agg(agg)
+
+    raw = db.execute(
+        select(DailyRaw)
+        .where(DailyRaw.machine_id == machine.id)
+        .where(DailyRaw.day == day_key)
+        .order_by(DailyRaw.shift_id.desc())
+    ).scalars().first()
+    if raw is not None:
+        return _metrics_from_raw(raw, machine)
+
+    return _metrics_from_history(db, machine, day)
+
+
 def _upsert_loom_data(
-    db: Session, day: date, machine: Machine, metrics: dict, live
+    db: Session, day: date, machine: Machine, metrics: dict, live=None
 ) -> DailyLoomData:
     """Cria/atualiza a linha do dashboard (idempotente por data+maquina)."""
     row = db.execute(
@@ -390,15 +399,18 @@ def _upsert_loom_data(
 
     row.mac_name = machine.mac_name
     row.collected_at = datetime.utcnow()
-    row.raw_data = {
-        "live_status": live.status,
-        "live_error": live.error,
-        "live_state": live_to_monitor_state(live),
-        "mac_type": live.mac_type,
-        "data": live.data,
-        "setup": live.setup,
-        "source": metrics.get("source"),
-    }
+    if live is None:
+        row.raw_data = {"source": metrics.get("source")}
+    else:
+        row.raw_data = {
+            "live_status": live.status,
+            "live_error": live.error,
+            "live_state": live_to_monitor_state(live),
+            "mac_type": live.mac_type,
+            "data": live.data,
+            "setup": live.setup,
+            "source": metrics.get("source"),
+        }
     return row
 
 
@@ -407,20 +419,42 @@ def _collect_one(
     item: DailyCollectionItem,
     day: date,
     prefetched: Optional[tuple] = None,
+    allow_live: bool = True,
 ) -> str:
-    """Coleta um tear. Retorna ``"success"`` ou ``"retry"``."""
+    """Coleta um tear. Retorna ``"success"``, ``"retry"`` ou ``"no_source"``."""
     machine = db.get(Machine, item.machine_id)
     if machine is None:
         item.status = "failed"
         item.error_reason = "Tear nao encontrado no cadastro"
         return "retry"
+
+    item.attempts = (item.attempts or 0) + 1
+    item.last_retry_at = datetime.utcnow()
+
+    if not allow_live:
+        # Dia passado: so fontes historicas. Nunca gravar o estado atual do tear
+        # como se fosse o do dia.
+        metrics = _stored_metrics(db, machine, day)
+        if metrics is None:
+            item.status = "no_source"
+            item.error_reason = "Sem fonte de dados para este dia"
+            item.data_json = {"source": None}
+            return "no_source"
+        _upsert_loom_data(db, day, machine, metrics)
+        item.status = "success"
+        item.error_reason = None
+        item.collected_at = datetime.utcnow()
+        item.data_json = {
+            "source": metrics.get("source"),
+            "rpm": metrics.get("rpm"),
+            "efficiency": metrics.get("efficiency"),
+        }
+        return "success"
+
     if not machine.ip_addr:
         item.status = "failed"
         item.error_reason = "IP nao configurado"
         return "retry"
-
-    item.attempts = (item.attempts or 0) + 1
-    item.last_retry_at = datetime.utcnow()
 
     if prefetched is not None:
         live, exc = prefetched
@@ -471,10 +505,13 @@ def _refresh_counters(db: Session, run: DailyCollectionRun) -> None:
         run.status = "completed"
     elif run.failed_count == 0:
         run.status = "completed"
-    elif run.success_count == 0:
-        run.status = "failed"
-    else:
+    elif run.success_count > 0:
         run.status = "partial"
+    elif items and all(i.status == "no_source" for i in items):
+        # Nenhuma fonte historica para o dia: lacuna explicita, nao falha de rede.
+        run.status = "no_source"
+    else:
+        run.status = "failed"
 
 
 def _ensure_items(db: Session, run: DailyCollectionRun) -> dict[int, DailyCollectionItem]:
@@ -533,8 +570,13 @@ def collect_daily_data(
     collection_date: Optional[date] = None,
     force: bool = False,
     retry_only: bool = False,
+    allow_live: bool = True,
 ) -> DailyCollectionRun:
-    """Executa a coleta do dia anterior (ou reprocessa a fila de retentativa)."""
+    """Executa a coleta do dia anterior (ou reprocessa a fila de retentativa).
+
+    ``allow_live=False`` restringe a coleta a fontes historicas — obrigatorio
+    para dias passados, onde a leitura ao vivo nao representa o dia.
+    """
     day = collection_date or get_yesterday()
     run, created = ensure_collection_run(db, day)
 
@@ -559,10 +601,12 @@ def collect_daily_data(
     else:
         targets = [i for i in items.values() if i.status != "success" or i.in_retry_queue]
 
-    prefetched = _fetch_many(db, targets) if targets else {}
+    prefetched = _fetch_many(db, targets) if targets and allow_live else {}
     for item in targets:
-        result = _collect_one(db, item, day, prefetched.get(item.machine_id))
-        item.in_retry_queue = result != "success"
+        result = _collect_one(
+            db, item, day, prefetched.get(item.machine_id), allow_live=allow_live
+        )
+        item.in_retry_queue = result == "retry"
     db.flush()
 
     _refresh_counters(db, run)
@@ -577,10 +621,15 @@ def collect_daily_data(
 
 
 def retry_pending(
-    db: Session, collection_date: Optional[date] = None, respect_interval: bool = True
+    db: Session,
+    collection_date: Optional[date] = None,
+    respect_interval: bool = True,
+    allow_live: Optional[bool] = None,
 ) -> Optional[DailyCollectionRun]:
     """Reprocessa apenas os teares que ficaram na fila de retentativa."""
     day = collection_date or get_yesterday()
+    if allow_live is None:
+        allow_live = day >= get_yesterday()
     run = db.execute(
         select(DailyCollectionRun).where(DailyCollectionRun.collection_date == day)
     ).scalar_one_or_none()
@@ -607,10 +656,12 @@ def retry_pending(
 
     run.status = "running"
     run.started_at = datetime.utcnow()
-    prefetched = _fetch_many(db, due)
+    prefetched = _fetch_many(db, due) if allow_live else {}
     for item in due:
-        result = _collect_one(db, item, day, prefetched.get(item.machine_id))
-        item.in_retry_queue = result != "success"
+        result = _collect_one(
+            db, item, day, prefetched.get(item.machine_id), allow_live=allow_live
+        )
+        item.in_retry_queue = result == "retry"
     db.flush()
 
     _refresh_counters(db, run)
@@ -619,10 +670,120 @@ def retry_pending(
     return run
 
 
+def backfill(db: Session, start: date, end: date) -> list[DailyCollectionRun]:
+    """Garante execucoes para ``[start, end]`` sem usar leitura ao vivo no passado."""
+    if end < start:
+        raise ValueError("data final anterior a inicial")
+    limit = get_yesterday()
+    if end > limit:
+        end = limit
+
+    runs: list[DailyCollectionRun] = []
+    day = start
+    while day <= end:
+        runs.append(collect_daily_data(db, day, allow_live=(day >= limit)))
+        day += timedelta(days=1)
+    return runs
+
+
+def ensure_recent_runs(
+    db: Session, days: int = 7, end: Optional[date] = None
+) -> list[DailyCollectionRun]:
+    """Cria execucoes para os ultimos dias que nunca foram coletados."""
+    end = end or get_yesterday()
+    start = end - timedelta(days=max(days, 1) - 1)
+    existing = set(
+        db.execute(
+            select(DailyCollectionRun.collection_date).where(
+                DailyCollectionRun.collection_date >= start,
+                DailyCollectionRun.collection_date <= end,
+            )
+        ).scalars()
+    )
+    created: list[DailyCollectionRun] = []
+    day = start
+    while day <= end:
+        if day not in existing:
+            created.append(
+                collect_daily_data(db, day, allow_live=(day >= get_yesterday()))
+            )
+        day += timedelta(days=1)
+    return created
+
+
+def collection_gaps(db: Session, days: int = 7, end: Optional[date] = None) -> dict:
+    """Lacunas dos ultimos dias: dias sem execucao e teares sem coleta."""
+    end = end or get_yesterday()
+    start = end - timedelta(days=max(days, 1) - 1)
+
+    runs = {
+        run.collection_date: run
+        for run in db.execute(
+            select(DailyCollectionRun).where(
+                DailyCollectionRun.collection_date >= start,
+                DailyCollectionRun.collection_date <= end,
+            )
+        ).scalars()
+    }
+    items_by_run: dict[int, list[DailyCollectionItem]] = {}
+    if runs:
+        for item in db.execute(
+            select(DailyCollectionItem).where(
+                DailyCollectionItem.run_id.in_([r.id for r in runs.values()])
+            )
+        ).scalars():
+            items_by_run.setdefault(item.run_id, []).append(item)
+
+    machines = list(
+        db.execute(
+            select(Machine)
+            .where(Machine.active.is_(True))
+            .order_by(Machine.mac_name)
+        ).scalars()
+    )
+
+    missing_by_loom: dict[str, list[str]] = {m.mac_name: [] for m in machines}
+    day_rows: list[dict] = []
+    cursor = start
+    while cursor <= end:
+        run = runs.get(cursor)
+        if run is None:
+            missing = [m.mac_name for m in machines]
+            status = "missing"
+        else:
+            missing = [
+                i.mac_name for i in items_by_run.get(run.id, []) if i.status != "success"
+            ]
+            status = run.status
+        for name in missing:
+            missing_by_loom[name].append(cursor.isoformat())
+        day_rows.append(
+            {"date": cursor.isoformat(), "status": status, "missing": missing}
+        )
+        cursor += timedelta(days=1)
+
+    looms = [
+        {"mac_name": name, "missing_days": dates, "missing_count": len(dates)}
+        for name, dates in missing_by_loom.items()
+        if dates
+    ]
+    looms.sort(key=lambda row: (-row["missing_count"], row["mac_name"]))
+
+    return {
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "days": day_rows,
+        "looms": looms,
+    }
+
+
 def ensure_daily_collection(db: Session, *, respect_hour: bool = True) -> Optional[DailyCollectionRun]:
-    """Garante que a coleta do dia anterior exista e roda a retentativa pendente."""
+    """Garante a coleta do dia anterior exista, roda retentativa e cobre lacunas."""
     now = datetime.now()
     if respect_hour and now.hour < COLLECTION_HOUR:
+        # Antes do fechamento do dia, ainda nao se coleta o dia anterior, mas as
+        # lacunas de dias mais antigos podem ser registradas (sem rede).
+        ensure_recent_runs(db, days=7, end=get_yesterday() - timedelta(days=1))
         return None
 
     day = get_yesterday()
@@ -631,7 +792,11 @@ def ensure_daily_collection(db: Session, *, respect_hour: bool = True) -> Option
     ).scalar_one_or_none()
 
     if run is None:
-        return collect_daily_data(db, day)
-    if run.retry_count > 0:
-        return retry_pending(db, day)
+        run = collect_daily_data(db, day)
+    elif run.retry_count > 0:
+        run = retry_pending(db, day)
+
+    # Dias em que a aplicacao ficou fora do ar ganham registro explicito (lacuna),
+    # sem leitura ao vivo: o dado do passado so pode vir de fonte historica.
+    ensure_recent_runs(db, days=7)
     return run

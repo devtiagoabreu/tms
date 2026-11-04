@@ -34,6 +34,10 @@ pip install -e ".[dev]"
 alembic upgrade head
 PYTHONPATH=src uvicorn tms.app.main:app --reload
 
+# opcional: coletor contínuo do status ao vivo (default 60s; 0 desliga)
+export TMS_COLLECT_INTERVAL=60
+export TMS_COLLECT_TIMEOUT=10
+
 # 3. testar
 pytest
 ```
@@ -49,7 +53,7 @@ hash `bcrypt`.
 
 | Papel | Pode |
 |---|---|
-| `admin` | tudo, incluindo disparar coleta/retentativa e editar configurações |
+| `admin` | tudo, incluindo disparar coleta/backfill/retentativa e editar configurações |
 | `operador` | consultar telas, relatórios e monitor |
 | `visualizador` | somente leitura |
 
@@ -105,7 +109,9 @@ Somente leitura, paginada (`limit` ≤ 1000, `offset`) e filtrável por tear/dia
 | `GET /api/screens/{efficiency\|production\|stop-analysis\|shiftreport\|stylereport\|statushistory\|svsreport\|stophistory\|showstyle}.csv` | idem; stop-analysis usa `value=count\|time` |
 | `GET /api/daily` | dashboard do dia: `day` (default = ontem), resumo, dados por tear e fila de retentativa |
 | `GET /api/daily/history` | execuções de coleta anteriores (`limit`) |
+| `GET /api/daily/gaps` | lacunas dos últimos `days` (default 7): dias sem coleta completa e teares ausentes em 2+ dias |
 | `POST /api/daily/collect` | dispara a coleta do dia anterior (`day`, `force`) — **admin** |
+| `POST /api/daily/backfill` | preenche lacunas de `start`→`end` (default: últimos 7 dias) usando só fontes históricas — **admin** |
 | `POST /api/daily/retry` | reprocessa a fila de teares inalcançáveis (`day`) — **admin** |
 | `GET /monitor` | dashboard HTML que consome `/api/monitor` (auto-refresh 30s) |
 | `GET /` | dashboard diário (HTML) com a coleta do dia anterior |
@@ -126,6 +132,9 @@ por nome do operador e não tem granularidade de turno.
 PYTHONPATH=src python -m tms.maintenance retention --dry-run
 PYTHONPATH=src python -m tms.maintenance retention --reference 2026.09.17
 
+# mudar a retenção do histórico ao vivo (default: 45 dias)
+PYTHONPATH=src python -m tms.maintenance retention --reference 2026.09.17 --live-days 30
+
 # contar (sem apagar) o que sairia da retenção até 2024.12.31
 PYTHONPATH=src python -m tms.maintenance purge --to 2024.12.31 --dry-run
 
@@ -138,6 +147,8 @@ PYTHONPATH=src python -m tms.maintenance rebuild-agg --from 2025.01.01 --to 2025
 
 `retention` espelha a política do legado (`old_03/06/12_ym`): `machine_snapshots`
 1 mês; `daily_raw`/`stop_events` 3 meses; `agg_shift`/`operator_daily` 12 meses.
+`live_status` (amostras do coletor contínuo, ~1/min) usa uma janela própria em
+dias, **45 por padrão**, ajustável com `--live-days`.
 Os períodos de semana/mês são calculados a partir de `agg_shift`, que sobrevive
 ao descarte do bruto — `report(...)` usa `source="agg"` por default
 (`source="raw"` usa `daily_raw`).
@@ -193,8 +204,9 @@ snapshot → `no_data`.
 
 A rota `/` é o dashboard operacional do **dia anterior**. Ela é alimentada por
 `GET /api/daily` e mostra: teares coletados, teares faltantes, eficiência/RPM
-médios, paradas do dia (trama/urdume/outros, com quantidade e minutos) e a fila
-de retentativa com o motivo por tear.
+médios, paradas do dia (trama/urdume/outros, com quantidade e minutos), a fila
+de retentativa com o motivo por tear e as **lacunas de coleta** dos últimos 7
+dias.
 
 A coleta é executada uma única vez por dia, sempre para o dia anterior:
 
@@ -204,6 +216,32 @@ A coleta é executada uma única vez por dia, sempre para o dia anterior:
   e garante que a coleta do dia anterior exista;
 - `admin` pode forçar pelo dashboard ("Coletar agora") ou via
   `POST /api/daily/collect?force=true`.
+
+Além da coleta diária, o lifespan mantém um **coletor contínuo** que lê todos os
+teares ativos em paralelo (8 threads) e grava `live_status` a cada
+`TMS_COLLECT_INTERVAL` segundos (default **60**; `0` desliga). É esse histórico
+que permite o detalhamento de paradas por causa mesmo em dias sem acesso ao
+monitor. `TMS_COLLECT_TIMEOUT` (default 10s) limita cada leitura de rede.
+
+### Lacunas e backfill
+
+Dias em que a aplicação ficou fora do ar não somem: ao iniciar (e a cada ciclo
+diário) os últimos 7 dias sem execução ganham um registro explícito de lacuna
+(`ensure_recent_runs`). Para dias passados **nunca se usa leitura ao vivo** —
+o estado atual do tear não representa o dia. A coleta tenta apenas
+
+1. `agg_shift` do dia; 2. `daily_raw` do dia; 3. histórico de `live_status`.
+
+Se nenhuma fonte existir, o item fica `no_source` com o motivo "Sem fonte de
+dados para este dia" e **não** entra na fila de retentativa de rede (não há o
+que buscar no tear). Quando o dado agregado chegar depois (ingestão atrasada),
+basta rodar o backfill de novo: a execução existente é reavaliada e os itens
+passam a `success` sem duplicar nada. O dashboard mostra os dias sem coleta
+completa e os teares ausentes em 2+ dias; `admin` dispara "Preencher lacunas"
+(`POST /api/daily/backfill?start=...&end=...`, default: últimos 7 dias). Se um
+tear ficou vários dias fora, cada dia aparece individualmente na lista —
+`no_source` enquanto não houver fonte, `failed` quando a rede falhou na coleta
+do dia.
 
 Prioridade das fontes por tear (a coluna `source` registra a escolhida):
 `agg_shift` → `daily_raw` → histórico de `live_status` do dia → leitura ao vivo
@@ -221,7 +259,8 @@ Tear inalcançável (Power_off, timeout, IP ausente) não é coletado: o item fi
 `failed`, entra na fila de retentativa e aparece no dashboard como **faltante**,
 com o motivo. A fila é reprocessada a cada 15 minutos (`RETRY_INTERVAL`);
 `POST /api/daily/retry` força a tentativa imediata. As leituras de rede são
-feitas em paralelo (8 threads) para não somar timeouts em série.
+feitas em paralelo (8 threads) para não somar timeouts em série. Em dias
+passados a retentativa só reavalia fontes históricas — nunca lê o tear ao vivo.
 
 ## Relatórios — exportação CSV (Fase 3)
 

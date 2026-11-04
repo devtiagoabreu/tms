@@ -6,11 +6,13 @@
   'completed': 'Concluída',
   'partial': 'Parcial',
   'failed': 'Falhou',
+  'no_source': 'Sem fonte',
 } %}
 {% set status_tone = {
   'completed': 'success',
   'partial': 'warning',
   'failed': 'danger',
+  'no_source': 'danger',
   'running': 'warning',
   'pending': '',
 } %}
@@ -196,6 +198,49 @@
   </div>
 </div>
 
+{% if gap_days or gap_looms %}
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h2 class="card-title">Lacunas de coleta</h2>
+      <p class="muted" style="margin:4px 0 0;font-size:0.8125rem">
+        Últimos 7 dias &middot; dias sem coleta completa e teares ausentes em 2+ dias
+      </p>
+    </div>
+    {% if current_user and current_user.role.value == 'admin' %}
+    <button class="btn btn-sm" id="btnBackfill" data-start="{{ gaps.start }}" data-end="{{ gaps.end }}">
+      Preencher lacunas
+    </button>
+    {% endif %}
+  </div>
+  {% if gap_days %}
+  <div class="gap-block">
+    <span class="gap-label">Dias sem coleta completa</span>
+    <ul class="missing-list">
+      {% for d in gap_days %}
+      <li class="missing-item {% if d.status == 'missing' %}is-empty{% endif %}"
+          title="{{ d.status }}: {{ d.missing|join(', ') if d.missing else 'sem detalhe' }}">
+        {{ d.date[8:10] }}/{{ d.date[5:7] }} &middot; {{ d.missing|length }} tear{% if d.missing|length != 1 %}es{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% if gap_looms %}
+  <div class="gap-block">
+    <span class="gap-label">Teares sem coleta em 2+ dias</span>
+    <ul class="missing-list">
+      {% for l in gap_looms %}
+      <li class="missing-item" title="{{ l.missing_days|join(', ') }}">
+        {{ l.mac_name }} &middot; {{ l.missing_count }} dias
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
 {% if missing %}
 <div class="card">
   <div class="card-head">
@@ -300,8 +345,10 @@
 
   const statusEl = document.getElementById('status');
   const btnCollect = document.getElementById('btnCollect');
+  const btnBackfill = document.getElementById('btnBackfill');
   const buttons = [
     btnCollect,
+    btnBackfill,
     document.getElementById('btnRetry'),
     document.getElementById('btnRetryInline'),
   ].filter(Boolean);
@@ -322,6 +369,12 @@
 
   if (btnCollect) {
     btnCollect.addEventListener('click', () => post('/api/daily/collect', 'Coletando teares'));
+  }
+  if (btnBackfill) {
+    btnBackfill.addEventListener('click', () => {
+      const url = `/api/daily/backfill?start=${btnBackfill.dataset.start}&end=${btnBackfill.dataset.end}`;
+      post(url, 'Preenchendo lacunas');
+    });
   }
   const retryButtons = [document.getElementById('btnRetry'), document.getElementById('btnRetryInline')].filter(Boolean);
   retryButtons.forEach(btn => {

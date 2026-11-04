@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -27,10 +28,23 @@ from tms.core.auth import verify_session_token
 from tms.db.base import SessionLocal
 from tms.models.auth import User
 from tms.services.daily_collection import ensure_daily_collection
+from tms.services.live_collection import collect_live_once
 
 log = logging.getLogger(__name__)
 
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+
+
 DAILY_CHECK_INTERVAL_S = 30 * 60
+
+# Intervalo da coleta ao vivo que alimenta ``live_status`` (0 desliga).
+LIVE_COLLECT_INTERVAL_S = _env_int("TMS_COLLECT_INTERVAL", 60)
+LIVE_COLLECT_TIMEOUT_S = _env_int("TMS_COLLECT_TIMEOUT", 10)
 
 
 async def _daily_collection_loop() -> None:
@@ -43,6 +57,16 @@ async def _daily_collection_loop() -> None:
         await asyncio.sleep(DAILY_CHECK_INTERVAL_S)
 
 
+async def _live_collection_loop() -> None:
+    """Persiste o status de todos os teares continuamente (histórico do dia)."""
+    while True:
+        try:
+            await asyncio.to_thread(_run_live_check)
+        except Exception:  # pragma: no cover - nunca derruba o servidor
+            log.exception("Falha na coleta ao vivo")
+        await asyncio.sleep(LIVE_COLLECT_INTERVAL_S)
+
+
 def _run_daily_check() -> None:
     db = SessionLocal()
     try:
@@ -51,17 +75,29 @@ def _run_daily_check() -> None:
         db.close()
 
 
+def _run_live_check() -> None:
+    db = SessionLocal()
+    try:
+        collect_live_once(db, timeout=float(LIVE_COLLECT_TIMEOUT_S))
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(_daily_collection_loop())
+    tasks = [asyncio.create_task(_daily_collection_loop())]
+    if LIVE_COLLECT_INTERVAL_S > 0:
+        tasks.append(asyncio.create_task(_live_collection_loop()))
     try:
         yield
     finally:
-        task.cancel()
-        try:
-            await task
-        except (asyncio.CancelledError, Exception):
-            pass
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
 
 
 app = FastAPI(

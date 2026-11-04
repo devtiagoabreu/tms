@@ -1,6 +1,6 @@
 """Retenção e reprocessamento dos dados ingeridos.
 
-- ``retention``: aplica a política em camadas (1/3/12 meses).
+- ``retention``: aplica a política em camadas (1/3/12 meses) + ``live_status`` em dias.
 - ``purge``: apaga linhas por intervalo de dias em tabelas selecionadas.
 - ``rebuild-agg``: recalcula `agg_shift` a partir de `daily_raw`.
 
@@ -14,7 +14,7 @@ Uso::
 from __future__ import annotations
 
 import argparse
-from datetime import date
+from datetime import date, datetime, time, timedelta
 from typing import Callable, Dict, Iterable, Optional, Sequence
 
 from sqlalchemy import delete, func, select
@@ -24,6 +24,7 @@ from tms.ingest.pipeline import rebuild_agg
 from tms.models.runtime import (
     AggShift,
     DailyRaw,
+    LiveStatusRecord,
     MachineSnapshot,
     OperatorDaily,
     StopEvent,
@@ -36,6 +37,10 @@ PURGE_SOURCES = ("daily_raw", "agg_shift", "stop_events", "operator_daily", "mac
 #   snapshot (`current`) = 1 mês; bruto (`shift`/`stop_history`) = 3 meses;
 #   agregado (`agg_shift`/`operator_daily`, base de semana/mês) = 12 meses.
 RETENTION_MONTHS = {"snapshot": 1, "raw": 2, "agg": 11}
+
+# ``live_status`` guarda amostras do coletor contínuo (1/min): mantém 45 dias,
+# o suficiente para o dashboard diário e para investigar paradas recentes.
+LIVE_RETENTION_DAYS = 45
 
 # (nome, camada, modelo, coluna de data)
 _RETENTION_SPECS = (
@@ -116,11 +121,20 @@ def _newest_day(db: Session) -> Optional[str]:
     return max(candidates) if candidates else None
 
 
+def _parse_day(day: str) -> Optional[date]:
+    """``YYYY.MM.DD`` → :class:`date` (``None`` se o formato não bater)."""
+    try:
+        return date(int(day[:4]), int(day[5:7]), int(day[8:10]))
+    except (TypeError, ValueError):
+        return None
+
+
 def retention(
     db: Session,
     *,
     reference_day: Optional[str] = None,
     months: Optional[Dict[str, int]] = None,
+    live_days: Optional[int] = None,
     dry_run: bool = False,
 ) -> Dict[str, int]:
     """Aplica a retenção em camadas a partir de ``reference_day``.
@@ -147,6 +161,27 @@ def retention(
             counts[name] = int(
                 db.execute(delete(model).where(column < cutoff)).rowcount or 0
             )
+
+    # ``live_status`` é série temporal (DateTime), fora do esquema YYYY.MM.DD.
+    reference = _parse_day(reference_day) or date.today()
+    keep_days = live_days if live_days is not None else LIVE_RETENTION_DAYS
+    cutoff_dt = datetime.combine(reference - timedelta(days=keep_days), time.min)
+    if dry_run:
+        counts["live_status"] = int(
+            db.execute(
+                select(func.count())
+                .select_from(LiveStatusRecord)
+                .where(LiveStatusRecord.collected_at < cutoff_dt)
+            ).scalar_one()
+        )
+    else:
+        counts["live_status"] = int(
+            db.execute(
+                delete(LiveStatusRecord).where(LiveStatusRecord.collected_at < cutoff_dt)
+            ).rowcount
+            or 0
+        )
+
     if not dry_run:
         db.commit()
     return counts
@@ -163,7 +198,11 @@ def _cmd_retention(db: Session, args: argparse.Namespace) -> int:
         if args.agg_months is not None:
             months["agg"] = args.agg_months
     counts = retention(
-        db, reference_day=args.reference, months=months, dry_run=args.dry_run
+        db,
+        reference_day=args.reference,
+        months=months,
+        live_days=args.live_days,
+        dry_run=args.dry_run,
     )
     tag = "seriam apagadas" if args.dry_run else "apagadas"
     print(f"[retention] referência: {args.reference or 'auto'}; linhas {tag}:")
@@ -227,6 +266,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_retention.add_argument(
         "--agg-months", type=int, help=f"meses de agg_shift/operator_daily (default: {RETENTION_MONTHS['agg']})"
+    )
+    p_retention.add_argument(
+        "--live-days",
+        type=int,
+        help=f"dias de live_status (default: {LIVE_RETENTION_DAYS})",
     )
     p_retention.set_defaults(func=_cmd_retention)
     return parser

@@ -17,7 +17,7 @@ from tms.core.auth import create_session_token, verify_password
 from tms.db.base import get_db
 from tms.models.auth import User
 from tms.models.daily import DailyCollectionItem, DailyCollectionRun, DailyLoomData
-from tms.services.daily_collection import get_yesterday
+from tms.services.daily_collection import collection_gaps, get_yesterday
 
 public_router = APIRouter(tags=["web-public"])
 router = APIRouter(tags=["web"], dependencies=[Depends(require_user)])
@@ -230,6 +230,10 @@ def index_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
         "outros_min": total("outros_stops_min"),
     }
 
+    gaps = collection_gaps(db, days=7)
+    gap_days = [row for row in gaps["days"] if row["status"] not in ("completed",)]
+    gap_looms = [row for row in gaps["looms"] if row["missing_count"] >= 2]
+
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -242,6 +246,9 @@ def index_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
             "looms": looms,
             "missing": missing,
             "summary": summary,
+            "gaps": gaps,
+            "gap_days": gap_days,
+            "gap_looms": gap_looms,
             "current_user": getattr(request.state, "user", None),
         },
     )

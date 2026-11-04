@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -116,3 +116,58 @@ def test_daily_collect_admin_once_per_day(client, session, monkeypatch):
     assert payload["status"] == "completed"
     assert payload["summary"]["looms_collected"] == 2
     assert payload["summary"]["total_stops"] == 8
+
+
+def test_daily_gaps_reports_window(client):
+    response = client.get("/api/daily/gaps?days=3")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["days"]) == 3
+    assert body["days"][-1]["status"] == "missing"
+    assert body["days"][-1]["missing"] == ["00001", "00002"]
+
+
+def test_daily_backfill_rejects_non_admin(client, session):
+    _login(client, session, "view@tms.local")
+    response = client.post("/api/daily/backfill")
+    assert response.status_code == 403
+
+
+def test_daily_backfill_marks_past_days_without_live_read(client, session, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        daily_collection,
+        "fetch_live",
+        lambda ip, timeout=0: calls.append(ip) or _live(),
+    )
+    _login(client, session, "admin@tms.local")
+
+    start = date.today() - timedelta(days=3)
+    end = date.today() - timedelta(days=2)
+    response = client.post(f"/api/daily/backfill?start={start}&end={end}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [run["collection_date"] for run in body["runs"]] == [
+        start.isoformat(),
+        end.isoformat(),
+    ]
+    assert {run["status"] for run in body["runs"]} == {"no_source"}
+    assert calls == []
+
+    gaps = client.get("/api/daily/gaps?days=4")
+    assert gaps.status_code == 200
+    payload = gaps.json()
+    assert payload["end"] == (date.today() - timedelta(days=1)).isoformat()
+    by_date = {row["date"]: row for row in payload["days"]}
+    assert by_date[start.isoformat()]["status"] == "no_source"
+    assert by_date[start.isoformat()]["missing"] == ["00001", "00002"]
+
+
+def test_daily_backfill_rejects_invalid_range(client, session):
+    _login(client, session, "admin@tms.local")
+    yesterday = date.today() - timedelta(days=1)
+    response = client.post(
+        f"/api/daily/backfill?start={yesterday}&end={yesterday - timedelta(days=2)}"
+    )
+    assert response.status_code == 422

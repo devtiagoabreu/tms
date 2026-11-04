@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from datetime import datetime
+
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
@@ -8,7 +10,14 @@ import tms.models  # noqa: F401  (registra as tabelas no metadata)
 from tms import maintenance
 from tms.db.base import Base
 from tms.ingest import pipeline
-from tms.models.runtime import AggShift, DailyRaw, MachineSnapshot, OperatorDaily, StopEvent
+from tms.models.runtime import (
+    AggShift,
+    DailyRaw,
+    LiveStatusRecord,
+    MachineSnapshot,
+    OperatorDaily,
+    StopEvent,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -120,6 +129,50 @@ def test_cli_retention_parser():
     assert args.reference == "2026.09.17"
     assert args.raw_months == 0
     assert args.func is maintenance._cmd_retention
+
+
+def test_retention_live_status_days(db):
+    db.add_all(
+        [
+            LiveStatusRecord(
+                machine_id=999,
+                collected_at=datetime(2026, 6, 1, 12, 0),
+                state="run",
+                status="Run",
+                bits={},
+                data={},
+                setup={},
+            ),
+            LiveStatusRecord(
+                machine_id=999,
+                collected_at=datetime(2026, 9, 10, 12, 0),
+                state="run",
+                status="Run",
+                bits={},
+                data={},
+                setup={},
+            ),
+        ]
+    )
+    db.commit()
+
+    dry = maintenance.retention(db, reference_day="2026.09.17", dry_run=True)
+    assert dry["live_status"] == 1  # corte padrão de 45 dias
+
+    kept = maintenance.retention(db, reference_day="2026.09.17", live_days=200)
+    assert kept["live_status"] == 0
+    assert db.query(LiveStatusRecord).count() == 2
+
+    counts = maintenance.retention(db, reference_day="2026.09.17")
+    assert counts["live_status"] == 1
+    assert db.query(LiveStatusRecord).count() == 1
+
+
+def test_cli_retention_live_days_parser():
+    args = maintenance.build_parser().parse_args(
+        ["retention", "--reference", "2026.09.17", "--live-days", "10"]
+    )
+    assert args.live_days == 10
 
 
 def test_report_from_agg_survives_raw_purge(db):

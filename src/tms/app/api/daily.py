@@ -14,7 +14,9 @@ from tms.db.base import get_db
 from tms.models.auth import UserRole
 from tms.models.daily import DailyCollectionItem, DailyCollectionRun, DailyLoomData
 from tms.services.daily_collection import (
+    backfill,
     collect_daily_data,
+    collection_gaps,
     get_yesterday,
     retry_pending,
 )
@@ -189,6 +191,48 @@ def daily_collect(
     run = collect_daily_data(db, target, force=force)
     items = _items_of(db, run.id)
     return _run_out(run, items)
+
+
+@router.get("/gaps")
+def daily_gaps(
+    days: int = Query(7, ge=1, le=60, description="Tamanho da janela em dias"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Lacunas de coleta: dias sem execucao e teares que ficaram sem coleta."""
+    return collection_gaps(db, days=days)
+
+
+@router.post("/backfill")
+def daily_backfill(
+    start: Optional[date] = Query(None, description="Primeiro dia (default: 7 dias atras)"),
+    end: Optional[date] = Query(None, description="Ultimo dia (default: ontem)"),
+    db: Session = Depends(get_db),
+    _=Depends(require_roles(UserRole.admin)),
+) -> dict:
+    """Preenche lacunas de dias passados usando apenas fontes historicas."""
+    last = get_yesterday()
+    final = min(end or last, last)
+    first = start or (final - timedelta(days=6))
+    if first > final:
+        raise HTTPException(status_code=422, detail="Data inicial posterior a final")
+    if (final - first).days > 90:
+        raise HTTPException(status_code=422, detail="Intervalo maximo de 90 dias")
+
+    runs = backfill(db, first, final)
+    return {
+        "start": first.isoformat(),
+        "end": final.isoformat(),
+        "runs": [
+            {
+                "collection_date": run.collection_date.isoformat(),
+                "status": run.status,
+                "success_count": run.success_count,
+                "failed_count": run.failed_count,
+                "retry_count": run.retry_count,
+            }
+            for run in runs
+        ],
+    }
 
 
 @router.post("/retry")

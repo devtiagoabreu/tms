@@ -140,7 +140,9 @@ def test_offline_loom_goes_to_retry_queue_then_collects(db, monkeypatch):
     assert "Power_off" in item.error_reason
 
     monkeypatch.setattr(daily_collection, "fetch_live", lambda ip, timeout=0: _live(rpm=610.0))
-    retried = daily_collection.retry_pending(db, DAY, respect_interval=False)
+    retried = daily_collection.retry_pending(
+        db, DAY, respect_interval=False, allow_live=True
+    )
     assert retried.status == "partial"
     assert retried.retry_count == 1  # only 00003 (sem IP) remains
 
@@ -149,6 +151,139 @@ def test_offline_loom_goes_to_retry_queue_then_collects(db, monkeypatch):
     ).scalar_one()
     assert row.rpm == 610.0
     assert row.source == "live"
+
+
+def _agg_for(day: date, machine_id: int = 1) -> AggShift:
+    return AggShift(
+        shift_id=f"{day:%Y.%m.%d}.0",
+        machine_id=machine_id,
+        style="ABC",
+        seisan_1=100.0,
+        seisan_2=50.0,
+        seisan_3=None,
+        run_tm=420.0,
+        stop_ttm=20.0,
+        stop_ct=[1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        stop_tm=[2.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    )
+
+
+def test_backfill_past_days_marks_gap_without_live_read(db, monkeypatch):
+    calls = []
+
+    def fake_fetch(ip, timeout=0):
+        calls.append(ip)
+        return _live()
+
+    monkeypatch.setattr(daily_collection, "fetch_live", fake_fetch)
+
+    end = date.today() - timedelta(days=2)
+    start = end - timedelta(days=1)
+    runs = daily_collection.backfill(db, start, end)
+
+    assert [r.collection_date for r in runs] == [start, end]
+    assert all(r.status == "no_source" for r in runs)
+    assert calls == []  # dia passado nunca consulta o tear ao vivo
+
+    items = db.execute(select(DailyCollectionItem)).scalars().all()
+    assert len(items) == 6
+    assert {i.status for i in items} == {"no_source"}
+    assert {i.error_reason for i in items} == {"Sem fonte de dados para este dia"}
+    assert all(i.in_retry_queue is False for i in items)
+
+
+def test_past_day_uses_stored_source_without_live_read(db, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        daily_collection,
+        "fetch_live",
+        lambda ip, timeout=0: calls.append(ip) or _live(),
+    )
+    db.add(_agg_for(DAY))
+    db.commit()
+
+    run = daily_collection.collect_daily_data(db, DAY, allow_live=False)
+
+    assert calls == []
+    assert run.status == "partial"
+    assert run.success_count == 1
+
+    item = db.execute(
+        select(DailyCollectionItem).where(DailyCollectionItem.mac_name == "00001")
+    ).scalar_one()
+    assert item.status == "success"
+    row = db.execute(
+        select(DailyLoomData).where(DailyLoomData.mac_name == "00001")
+    ).scalar_one()
+    assert row.source == "agg_shift"
+
+
+def test_retry_of_past_day_never_reads_live(db, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        daily_collection,
+        "fetch_live",
+        lambda ip, timeout=0: calls.append(ip) or error_status(100),
+    )
+    run = daily_collection.collect_daily_data(db, DAY, allow_live=True)
+    assert run.retry_count == 3
+    calls.clear()
+
+    retried = daily_collection.retry_pending(db, DAY, respect_interval=False)
+
+    assert calls == []  # retentativa de dia passado só olha fontes históricas
+    assert retried.status == "no_source"
+    assert retried.retry_count == 0
+
+
+def test_recollect_past_day_picks_up_late_source(db):
+    first = daily_collection.collect_daily_data(db, DAY, allow_live=False)
+    assert first.status == "no_source"
+
+    _seed_history(db, 1)
+    second = daily_collection.collect_daily_data(db, DAY, allow_live=False)
+
+    assert second.id == first.id
+    assert second.success_count == 1
+    assert second.status == "partial"
+    row = db.execute(
+        select(DailyLoomData).where(DailyLoomData.mac_name == "00001")
+    ).scalar_one()
+    assert row.source == "history"
+
+
+def test_collection_gaps_reports_missing_days_and_looms(db):
+    db.add(_agg_for(DAY))
+    db.commit()
+    daily_collection.collect_daily_data(db, DAY, allow_live=False)
+
+    gaps = daily_collection.collection_gaps(db, days=2, end=DAY)
+
+    assert gaps["start"] == (DAY - timedelta(days=1)).isoformat()
+    assert gaps["end"] == DAY.isoformat()
+    rows = {row["date"]: row for row in gaps["days"]}
+    assert rows[DAY.isoformat()]["status"] == "partial"
+    assert rows[DAY.isoformat()]["missing"] == ["00002", "00003"]
+
+    previous = (DAY - timedelta(days=1)).isoformat()
+    assert rows[previous]["status"] == "missing"
+    assert set(rows[previous]["missing"]) == {"00001", "00002", "00003"}
+
+    looms = {row["mac_name"]: row for row in gaps["looms"]}
+    assert looms["00001"]["missing_count"] == 1
+    assert looms["00002"]["missing_days"] == [previous, DAY.isoformat()]
+    assert looms["00003"]["missing_count"] == 2
+
+
+def test_ensure_recent_runs_is_idempotent(db, monkeypatch):
+    monkeypatch.setattr(daily_collection, "fetch_live", lambda ip, timeout=0: _live())
+
+    first = daily_collection.ensure_recent_runs(db, days=2)
+    assert len(first) == 2
+
+    again = daily_collection.ensure_recent_runs(db, days=2)
+    assert again == []
+    assert db.query(DailyCollectionRun).count() == 2
 
 
 def test_agg_shift_has_priority_for_stop_breakdown(db, monkeypatch):
