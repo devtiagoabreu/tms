@@ -44,6 +44,28 @@ pytest
 
 API: `GET /api/health` · OpenAPI: `/docs`
 
+## Subir o sistema
+
+O script `start.ps1` aplica as migrações, configura as variáveis de ambiente
+padrão e sobe o servidor em `0.0.0.0:8000` (acessível pela rede local):
+
+```powershell
+# primeiro plano (Ctrl+C encerra)
+.\start.ps1
+
+# segundo plano, liberando o terminal
+Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','start.ps1' -WorkingDirectory (Get-Location)
+```
+
+Para outra porta ou sem o coletor contínuo:
+
+```powershell
+.\start.ps1 -Port 8080
+.\start.ps1 -NoCollector
+```
+
+Em produção, defina `TMS_SECRET_KEY` com um valor próprio antes de subir.
+
 ## Autenticação e papéis
 
 Todo o sistema (páginas HTML e `/api/*`) exige login. A sessão é um cookie
