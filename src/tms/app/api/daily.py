@@ -13,6 +13,7 @@ from tms.app.deps.auth import require_roles
 from tms.db.base import get_db
 from tms.models.auth import UserRole
 from tms.models.daily import DailyCollectionItem, DailyCollectionRun, DailyLoomData
+from tms.services import collection_progress
 from tms.services.daily_collection import (
     backfill,
     collect_daily_data,
@@ -191,6 +192,14 @@ def daily_collect(
     run = collect_daily_data(db, target, force=force)
     items = _items_of(db, run.id)
     return _run_out(run, items)
+
+
+@router.get("/progress")
+def daily_progress(
+    day: Optional[date] = Query(None, description="Data coletada (default: dia anterior)"),
+) -> dict:
+    """Andamento em tempo real da coleta (usado pela barra do dashboard)."""
+    return collection_progress.snapshot(day or get_yesterday())
 
 
 @router.get("/gaps")

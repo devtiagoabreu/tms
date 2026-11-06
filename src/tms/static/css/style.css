@@ -1306,6 +1306,87 @@ pre {
   background: var(--text-subtle);
 }
 
+.meter-fill.is-success {
+  background: var(--success);
+}
+
+.meter-fill.is-danger {
+  background: var(--danger);
+}
+
+.collect-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.collect-progress[hidden] {
+  display: none;
+}
+
+.collect-progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  font-size: 0.8125rem;
+}
+
+.collect-progress-label {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.collect-progress-percent {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.collect-progress .meter-track {
+  height: 8px;
+}
+
+.collect-progress-detail {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.collect-progress.is-running .meter-track {
+  position: relative;
+}
+
+.collect-progress.is-running .meter-track::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    var(--accent-soft) 50%,
+    transparent 80%
+  );
+  background-size: 200% 100%;
+  animation: collect-sweep 1.4s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes collect-sweep {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
 .run-meta {
   display: flex;
   flex-wrap: wrap;

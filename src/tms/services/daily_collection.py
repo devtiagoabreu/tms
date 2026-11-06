@@ -43,6 +43,7 @@ from tms.ingest.loom_file import parse_loom_file
 from tms.models.daily import DailyCollectionItem, DailyCollectionRun, DailyLoomData
 from tms.models.masters import Machine
 from tms.models.runtime import AggShift, DailyRaw, LiveStatusRecord
+from tms.services import collection_progress
 from tms.services.loom_history import day_production, day_stops
 
 log = logging.getLogger(__name__)
@@ -674,14 +675,18 @@ def _fetch_many(
     *,
     allow_live: bool = True,
     with_monitor: bool = False,
+    on_progress=None,
 ) -> dict[int, tuple]:
     """Le os teares em paralelo (rede) para nao somar timeouts em serie.
 
     Cada valor e ``(live, monitor, exc)``.  Mesmo com ``allow_live=False`` o
-    payload de histórico (``monitor``) pode ser buscado: ele contém os dias
+    payload de historico (``monitor``) pode ser buscado: ele contém os dias
     ``d0``/``d1`` e é a única forma de recuperar trama/urdume de um dia passado.
+
+    ``on_progress`` (opcional) é chamado a cada tear concluído, com
+    ``(concluidos, total, mac_name)``.
     """
-    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     machines = {
         m.id: m
@@ -708,8 +713,24 @@ def _fetch_many(
                 monitor = None
         return item.machine_id, (live, monitor, None)
 
+    if not items:
+        return {}
+
+    results: dict[int, tuple] = {}
+    total = len(items)
     with ThreadPoolExecutor(max_workers=8) as pool:
-        return dict(pool.map(work, items))
+        futures = {pool.submit(work, item): item for item in items}
+        for future in as_completed(futures):
+            item = futures[future]
+            try:
+                machine_id, payload = future.result()
+            except Exception as exc:  # pragma: no cover - defesa extra
+                machine_id, payload = item.machine_id, (None, None, exc)
+            results[machine_id] = payload
+            if on_progress is not None:
+                on_progress(len(results), total, item.mac_name)
+    return results
+
 
 
 def collect_daily_data(
@@ -734,6 +755,13 @@ def collect_daily_data(
             return run
         if not retry_only and run.status == "completed" and not incomplete:
             log.info("Coleta de %s ja concluida; nada a fazer", day)
+            collection_progress.finish(
+                day,
+                run.status,
+                run.success_count,
+                run.failed_count,
+                "A coleta deste dia já estava concluída.",
+            )
             return run
 
     run.status = "running"
@@ -756,28 +784,67 @@ def collect_daily_data(
     # O payload de histórico do tear guarda d0/d1. Para o dia anterior e o
     # anteanterior vale a pena buscá-lo mesmo sem leitura ao vivo.
     monitor_window = day >= get_yesterday() - timedelta(days=1)
-    prefetched = (
-        _fetch_many(
-            db, targets, allow_live=allow_live, with_monitor=monitor_window
+    collection_progress.start(day, len(targets))
+    try:
+        prefetched = (
+            _fetch_many(
+                db,
+                targets,
+                allow_live=allow_live,
+                with_monitor=monitor_window,
+                on_progress=lambda done, total, mac_name: collection_progress.fetch_completed(
+                    day, done, total, mac_name
+                ),
+            )
+            if targets
+            else {}
         )
-        if targets
-        else {}
-    )
-    for item in targets:
-        result = _collect_one(
-            db,
-            item,
+        collection_progress.set_phase(
             day,
-            prefetched.get(item.machine_id),
-            allow_live=allow_live,
-            monitor_allowed=monitor_window,
+            collection_progress.PHASE_PROCESSING,
+            f"Processando {len(targets)} tear(es)…",
         )
-        item.in_retry_queue = result == "retry"
-    db.flush()
+        for index, item in enumerate(targets, start=1):
+            result = _collect_one(
+                db,
+                item,
+                day,
+                prefetched.get(item.machine_id),
+                allow_live=allow_live,
+                monitor_allowed=monitor_window,
+            )
+            item.in_retry_queue = result == "retry"
+            collection_progress.process_completed(
+                day, index, len(targets), item.mac_name, result
+            )
+        db.flush()
 
-    _refresh_counters(db, run)
-    db.commit()
-    db.refresh(run)
+        _refresh_counters(db, run)
+        db.commit()
+        db.refresh(run)
+    except Exception:
+        collection_progress.finish(
+            day,
+            "failed",
+            sum(1 for i in items.values() if i.status == "success"),
+            sum(1 for i in items.values() if i.status != "success"),
+            "Coleta interrompida por um erro inesperado.",
+        )
+        raise
+
+    status_label = {
+        "completed": "Coleta concluída",
+        "partial": "Coleta concluída parcialmente",
+        "no_source": "Sem fonte de dados para o dia",
+        "failed": "Coleta finalizada com falhas",
+    }.get(run.status, "Coleta finalizada")
+    collection_progress.finish(
+        day,
+        run.status,
+        run.success_count,
+        run.failed_count,
+        f"{status_label}: {run.success_count} sucesso(s), {run.failed_count} sem coleta.",
+    )
 
     log.info(
         "Coleta %s: status=%s total=%s ok=%s falhas=%s retry=%s",

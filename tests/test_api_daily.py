@@ -15,7 +15,7 @@ from tms.db.base import Base, get_db
 from tms.models.auth import User, UserRole
 from tms.models.daily import DailyCollectionRun, DailyLoomData
 from tms.models.masters import Machine
-from tms.services import daily_collection
+from tms.services import collection_progress, daily_collection
 
 DAY = date(2026, 10, 27)
 
@@ -125,6 +125,37 @@ def test_daily_gaps_reports_window(client):
     assert len(body["days"]) == 3
     assert body["days"][-1]["status"] == "missing"
     assert body["days"][-1]["missing"] == ["00001", "00002"]
+
+
+def test_daily_progress_is_idle_without_collection(client):
+    collection_progress.reset(DAY)
+    response = client.get(f"/api/daily/progress?day={DAY.isoformat()}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "idle"
+    assert body["percent"] == 0
+    assert body["total"] == 0
+
+
+def test_daily_progress_reports_finished_collection(client, session, monkeypatch):
+    monkeypatch.setattr(daily_collection, "fetch_live", lambda ip, timeout=0: _live())
+    _login(client, session, "admin@tms.local")
+    collection_progress.reset(DAY)
+
+    response = client.post(f"/api/daily/collect?day={DAY.isoformat()}")
+    assert response.status_code == 200
+
+    progress = client.get(f"/api/daily/progress?day={DAY.isoformat()}")
+    assert progress.status_code == 200
+    body = progress.json()
+    assert body["status"] == "completed"
+    assert body["phase"] == "done"
+    assert body["percent"] == 100
+    assert body["total"] == 2
+    assert body["fetched"] == 2
+    assert body["processed"] == 2
+    assert body["success_count"] == 2
+    assert body["failed_count"] == 0
 
 
 def test_daily_backfill_rejects_non_admin(client, session):
