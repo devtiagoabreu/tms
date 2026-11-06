@@ -1387,6 +1387,86 @@ pre {
   }
 }
 
+/* Resultado detalhado da coleta: quais teares deram certo e quais falharam */
+.collect-results {
+  margin: 0 0 var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.collect-results[hidden] {
+  display: none;
+}
+
+.collect-results-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+.collect-results-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.collect-results-summary {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.collect-results table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.collect-results th {
+  text-align: left;
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.collect-results td {
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+.collect-results tr:last-child td {
+  border-bottom: none;
+}
+
+.collect-results .status-ok {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.collect-results .status-fail {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.collect-results .status-retry {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.collect-results .error-text {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
 .run-meta {
   display: flex;
   flex-wrap: wrap;

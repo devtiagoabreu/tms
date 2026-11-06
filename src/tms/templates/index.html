@@ -56,6 +56,24 @@
   <span class="collect-progress-detail" id="collectProgressDetail"></span>
 </div>
 
+<div class="collect-results" id="collectResults" hidden>
+  <div class="collect-results-head">
+    <span class="collect-results-title" id="collectResultsTitle">Resultado da coleta</span>
+    <span class="collect-results-summary" id="collectResultsSummary">—</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:30%">Tear</th>
+        <th style="width:14%">Status</th>
+        <th style="width:26%">Tipo</th>
+        <th style="width:30%">Erro / motivo</th>
+      </tr>
+    </thead>
+    <tbody id="collectResultsBody"></tbody>
+  </table>
+</div>
+
 {% if not run %}
 <div class="alert alert-warning">
   <svg class="alert-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
@@ -395,6 +413,10 @@
   const progressPercent = document.getElementById('collectProgressPercent');
   const progressFill = document.getElementById('collectProgressFill');
   const progressDetail = document.getElementById('collectProgressDetail');
+  const collectResults = document.getElementById('collectResults');
+  const collectResultsTitle = document.getElementById('collectResultsTitle');
+  const collectResultsSummary = document.getElementById('collectResultsSummary');
+  const collectResultsBody = document.getElementById('collectResultsBody');
   let progressTimer = null;
   const buttons = [
     btnCollect,
@@ -429,6 +451,46 @@
     }
     if (progressPercent) progressPercent.textContent = percent + '%';
     if (progressDetail) progressDetail.textContent = data.message || '';
+  }
+
+  function renderResults(data) {
+    if (!collectResults || !data || !data.items) return;
+    collectResults.hidden = false;
+
+    const ok = data.success_count || 0;
+    const fail = data.failed_count || 0;
+    const retry = data.retry_count || 0;
+    if (collectResultsTitle) {
+      collectResultsTitle.textContent =
+        fail === 0 && retry === 0
+          ? `Coleta concluída — ${ok} tear${ok !== 1 ? 'es' : ''} coletado${ok !== 1 ? 's' : ''}`
+          : `Coleta concluída — ${ok} ok, ${fail} falha${fail !== 1 ? 's' : ''}, ${retry} retentativ${retry === 1 ? 'a' : 'as'}`;
+    }
+    if (collectResultsSummary) {
+      collectResultsSummary.textContent = `${ok + fail + retry} tear(es) &middot; ${ok} sucesso${ok !== 1 ? 's' : ''} &middot; ${fail} falha${fail !== 1 ? 's' : ''}`;
+    }
+
+    if (collectResultsBody) {
+      collectResultsBody.innerHTML = '';
+      (data.items || []).forEach((item) => {
+        const tr = document.createElement('tr');
+        const status = item.status || '—';
+        let statusClass = 'status-ok';
+        let statusText = 'Coletado';
+        if (status === 'failed' || status === 'retry') {
+          statusClass = status === 'failed' ? 'status-fail' : 'status-retry';
+          statusText = status === 'failed' ? 'Falhou' : 'Retentar';
+        }
+        const error = item.error ? ` — ${item.error}` : '';
+        tr.innerHTML = `
+          <td>${item.mac_name || '—'}</td>
+          <td><span class="${statusClass}">${statusText}</span></td>
+          <td>${item.mac_type || '—'}</td>
+          <td class="error-text">${error || '—'}</td>
+        `;
+        collectResultsBody.appendChild(tr);
+      });
+    }
   }
 
   async function readProgress(render = true) {
@@ -503,6 +565,8 @@
           message: 'Coleta concluída.',
         });
       }
+      // Mostra o detalhe de quais teares deram certo e quais falharam
+      renderResults(result.json || {});
       setStatus(statusEl, 'Coleta concluída. Atualizando…', 'success');
       setTimeout(() => window.location.reload(), 900);
       return;
@@ -535,5 +599,14 @@
     renderProgress(data);
     startProgressPolling();
   });
+
+  // Se ja existe uma coleta concluida no banco, preenche o detalhe de quais teares deram certo/falharam.
+  if (collectResultsBody) {
+    fetchJSON('/api/daily/').then(({ ok, json }) => {
+      if (ok && json && (json.status === 'completed' || json.status === 'partial' || json.status === 'failed')) {
+        renderResults(json);
+      }
+    });
+  }
 </script>
 {% endblock %}
