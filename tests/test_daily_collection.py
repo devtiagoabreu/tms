@@ -313,6 +313,8 @@ def test_agg_shift_has_priority_for_stop_breakdown(db, monkeypatch):
     assert row.source == "agg_shift"
     assert row.style == "ABC"
     assert row.production == 150.0
+    assert row.picks == 100.0
+    assert row.meters == 50.0
     assert row.trama_stops == 3
     assert row.trama_stops_min == 6.0
     assert row.urdume_stops == 3
@@ -320,3 +322,100 @@ def test_agg_shift_has_priority_for_stop_breakdown(db, monkeypatch):
     assert row.outros_stops == 4
     assert row.outros_stops_min == 8.0
     assert row.total_stop_ct == 10
+
+
+def _ts(day: date) -> str:
+    return f"{day.year} {day.month} {day.day} 3 6 0 0"
+
+
+def _monitor_payload(day: date, *, with_history: bool = True) -> str:
+    """Payload mínimo com d0/d1 e produção diária (PM_yN_p5)."""
+    next_day = day + timedelta(days=1)
+    lines = [
+        "get_time 2026 11 5 3 12 0 0",
+        "JAT710-TMS-DATA current",
+        "mac_name 00001",
+        "style 1210",
+        "#end_of_data",
+    ]
+    if with_history:
+        lines += [
+            "JAT710-TMS-DATA stop_history",
+            f"MH_d0_tm {_ts(next_day)}",
+            "MH_d0_h0_history 10:00:00 10:05:00 0004",
+            f"MH_d1_tm {_ts(day)}",
+            "MH_d1_h0_history 11:00:00 11:02:00 0000",
+            "MH_d1_h1_history 12:00:00 12:03:00 0004",
+            "#end_of_data",
+        ]
+    lines += [
+        "JAT700-MCARD-DATA moni_monitor",
+        "PM_y1_p5_seisan 100 80 90 0",
+        f"PM_y1_pd_tm {_ts(next_day)}",
+        "PM_y2_p5_seisan 300 250 270 0",
+        f"PM_y2_pd_tm {_ts(day)}",
+        "#end_of_data",
+    ]
+    return "\n".join(lines)
+
+
+def test_loom_history_preenche_breakdown_e_producao_do_dia_anterior_ao_ontem(
+    db, monkeypatch
+):
+    day = date.today() - timedelta(days=2)
+    db.add(
+        DailyLoomData(
+            collection_date=day,
+            machine_id=1,
+            mac_name="00001",
+            source="live",
+            total_stop_ct=2,
+            collected_at=datetime.utcnow(),
+        )
+    )
+    db.commit()
+    monkeypatch.setattr(
+        daily_collection,
+        "fetch_monitor_data",
+        lambda ip, timeout=0: type("Monitor", (), {"text": _monitor_payload(day)})(),
+    )
+
+    run = daily_collection.collect_daily_data(db, day, allow_live=False)
+
+    assert run.collection_date == day
+    row = db.execute(
+        select(DailyLoomData).where(
+            DailyLoomData.machine_id == 1,
+            DailyLoomData.collection_date == day,
+        )
+    ).scalar_one()
+    assert row.source == "loom_history"
+    assert row.trama_stops == 1
+    assert row.urdume_stops == 1
+    assert row.outros_stops == 0
+    assert row.picks == 30.0
+    assert row.meters == 25.0
+
+
+def test_loom_history_producao_sem_eventos_de_parada(db, monkeypatch):
+    day = date.today() - timedelta(days=1)
+    monkeypatch.setattr(
+        daily_collection,
+        "fetch_monitor_data",
+        lambda ip, timeout=0: type(
+            "Monitor", (), {"text": _monitor_payload(day, with_history=False)}
+        )(),
+    )
+
+    daily_collection.collect_daily_data(db, day, allow_live=False)
+
+    row = db.execute(
+        select(DailyLoomData).where(
+            DailyLoomData.machine_id == 1,
+            DailyLoomData.collection_date == day,
+        )
+    ).scalar_one()
+    assert row.source == "loom_history"
+    assert row.picks == 30.0
+    assert row.meters == 25.0
+    assert row.total_stop_ct is None

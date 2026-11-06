@@ -11,7 +11,19 @@ from types import SimpleNamespace
 import pytest
 
 from tms.app import main as app_main
+from tms.collector import MonitorData
 from tms.models.auth import UserRole
+from tms.services import daily_collection
+
+
+@pytest.fixture(autouse=True)
+def stub_monitor_payload(monkeypatch):
+    """Evita rede nos testes; cada teste pode sobrescrever com seu payload."""
+    monkeypatch.setattr(
+        daily_collection,
+        "fetch_monitor_data",
+        lambda ip, timeout=0: MonitorData(text=None, error=None),
+    )
 
 
 @pytest.fixture(autouse=True)

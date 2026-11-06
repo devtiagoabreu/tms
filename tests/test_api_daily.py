@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,7 +13,7 @@ from tms.core.auth import create_session_token, hash_password
 from tms.core.live import LiveStatus
 from tms.db.base import Base, get_db
 from tms.models.auth import User, UserRole
-from tms.models.daily import DailyLoomData
+from tms.models.daily import DailyCollectionRun, DailyLoomData
 from tms.models.masters import Machine
 from tms.services import daily_collection
 
@@ -171,3 +171,51 @@ def test_daily_backfill_rejects_invalid_range(client, session):
         f"/api/daily/backfill?start={yesterday}&end={yesterday - timedelta(days=2)}"
     )
     assert response.status_code == 422
+
+
+def test_dashboard_mostra_card_de_producao_mensal(client, session):
+    today = date.today()
+    current_start = today.replace(day=1)
+    previous_end = current_start - timedelta(days=1)
+    previous_start = previous_end.replace(day=1)
+    target = today - timedelta(days=1)
+
+    session.add_all(
+        [
+            DailyCollectionRun(
+                collection_date=target,
+                status="completed",
+                total_machines=2,
+                success_count=2,
+                failed_count=0,
+                retry_count=0,
+            ),
+            DailyLoomData(
+                collection_date=current_start,
+                machine_id=1,
+                mac_name="00001",
+                source="loom_history",
+                picks=12.5,
+                meters=10.0,
+                collected_at=datetime.utcnow(),
+            ),
+            DailyLoomData(
+                collection_date=previous_start,
+                machine_id=1,
+                mac_name="00001",
+                source="loom_history",
+                picks=99.0,
+                meters=88.0,
+                collected_at=datetime.utcnow(),
+            ),
+        ]
+    )
+    session.commit()
+    _login(client, session, "admin@tms.local")
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Produção mensal" in response.text
+    assert "12,5" in response.text
+    assert "99,0" in response.text

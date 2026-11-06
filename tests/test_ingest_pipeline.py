@@ -230,6 +230,16 @@ def test_ingest_loom_creates_snapshot(db):
     assert db.query(MachineSnapshot).count() == 1
 
 
+def test_ensure_machine_normaliza_nome_numerico(db):
+    machine, created = pipeline.ensure_machine(db, "0002", "JAT", "172.17.1.2")
+    assert created is True
+    assert machine.mac_name == "00002"
+
+    again, created = pipeline.ensure_machine(db, "00002")
+    assert created is False
+    assert again.id == machine.id
+
+
 def test_ingest_directory(tmp_path, db):
     (tmp_path / "current").mkdir()
     (tmp_path / "current" / "current.txt").write_text(_text("current.txt"), encoding="utf-8")

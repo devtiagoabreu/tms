@@ -18,6 +18,7 @@ from tms.db.base import get_db
 from tms.models.auth import User
 from tms.models.daily import DailyCollectionItem, DailyCollectionRun, DailyLoomData
 from tms.services.daily_collection import collection_gaps, get_yesterday
+from tms.services.monthly import current_and_previous_months, month_summary
 
 public_router = APIRouter(tags=["web-public"])
 router = APIRouter(tags=["web"], dependencies=[Depends(require_user)])
@@ -29,10 +30,12 @@ templates = Jinja2Templates(directory=str(templates_dir))
 NAV: tuple[dict, ...] = (
     {
         "label": "Visão geral",
+        "icon": "dashboard",
         "items": (
             {
                 "href": "/",
                 "label": "Dashboard",
+                "icon": "dashboard",
                 "match": ("/",),
                 "desc": "Dashboard diário: dados coletados dos teares no dia anterior, teares que faltaram e fila de retentativa.",
                 "legacy": "Menu Principal",
@@ -41,6 +44,7 @@ NAV: tuple[dict, ...] = (
             {
                 "href": "/reports",
                 "label": "Relatórios",
+                "icon": "reports",
                 "match": ("/reports",),
                 "desc": "Consulta consolidada por dia, semana ou mês, filtrando por máquina, intervalo de datas e unidade de medida.",
                 "legacy": "Relatorio de Turno / Relatorio por Operador",
@@ -49,6 +53,7 @@ NAV: tuple[dict, ...] = (
             {
                 "href": "/telas",
                 "label": "Telas",
+                "icon": "layers",
                 "match": ("/telas",),
                 "desc": "Formulário único que consulta qualquer tela do sistema sem trocar de página.",
                 "legacy": "Menu Principal",
@@ -57,6 +62,7 @@ NAV: tuple[dict, ...] = (
             {
                 "href": "/monitor",
                 "label": "Monitor",
+                "icon": "monitor",
                 "match": ("/monitor",),
                 "desc": "Situação das máquinas em tempo real: estado, eficiência, paradas e leitura direta da rede.",
                 "legacy": "Display Operacao",
@@ -66,10 +72,12 @@ NAV: tuple[dict, ...] = (
     },
     {
         "label": "Telas de produção",
+        "icon": "chart",
         "items": (
             {
                 "href": "/screens/efficiency",
                 "label": "Eficiência",
+                "icon": "bolt",
                 "match": ("/screens/efficiency",),
                 "desc": "Eficiência por loom ou operador, com tempo de roda, parada e fios de urdume e trama.",
                 "legacy": "Grafico de Eficiencia",
@@ -78,6 +86,7 @@ NAV: tuple[dict, ...] = (
             {
                 "href": "/screens/production",
                 "label": "Produção",
+                "icon": "box",
                 "match": ("/screens/production",),
                 "desc": "Quantidade produzida por loom ou operador no período selecionado.",
                 "legacy": "Grafico de Producao",
@@ -86,6 +95,7 @@ NAV: tuple[dict, ...] = (
             {
                 "href": "/screens/stop-analysis",
                 "label": "Análise de Paradas",
+                "icon": "alert",
                 "match": ("/screens/stop-analysis",),
                 "desc": "Ranking de paradas por causa, medido em contagem de eventos ou em tempo.",
                 "legacy": "Grafico de Analise de Paradas",
@@ -94,6 +104,7 @@ NAV: tuple[dict, ...] = (
             {
                 "href": "/screens/shiftreport",
                 "label": "Relatório de Turno",
+                "icon": "clock",
                 "match": ("/screens/shiftreport",),
                 "desc": "Indicadores consolidados de cada turno, agrupados por loom ou estilo.",
                 "legacy": "Relatorio de Turno",
@@ -102,6 +113,7 @@ NAV: tuple[dict, ...] = (
             {
                 "href": "/screens/stylereport",
                 "label": "Relatório de Artigo",
+                "icon": "tag",
                 "match": ("/screens/stylereport",),
                 "desc": "Desempenho por artigo (estilo) de tecido, com unidade e tipo de feixe.",
                 "legacy": "Relatorio de Artigo",
@@ -110,6 +122,7 @@ NAV: tuple[dict, ...] = (
             {
                 "href": "/screens/showstyle",
                 "label": "Histórico de Artigos",
+                "icon": "list",
                 "match": ("/screens/showstyle",),
                 "desc": "Sequência de artigos processados por loom ou estilo, por turno ou operador.",
                 "legacy": "Mostrar Historico de Artigos",
@@ -119,10 +132,12 @@ NAV: tuple[dict, ...] = (
     },
     {
         "label": "Históricos",
+        "icon": "history",
         "items": (
             {
                 "href": "/screens/statushistory",
                 "label": "Histórico",
+                "icon": "activity",
                 "match": ("/screens/statushistory",),
                 "desc": "Evolução do status do equipamento ao longo do período, por loom ou estilo.",
                 "legacy": "Historico",
@@ -131,6 +146,7 @@ NAV: tuple[dict, ...] = (
             {
                 "href": "/screens/stophistory",
                 "label": "Histórico de Paradas",
+                "icon": "history",
                 "match": ("/screens/stophistory",),
                 "desc": "Registro detalhado de cada parada com causa e duração dentro do intervalo informado.",
                 "legacy": "Historico de Parada",
@@ -139,6 +155,7 @@ NAV: tuple[dict, ...] = (
             {
                 "href": "/screens/svsreport",
                 "label": "Relatório de Serviço",
+                "icon": "wrench",
                 "match": ("/screens/svsreport",),
                 "desc": "Relatório de serviço do turno, com seleção por loom ou estilo e tipo de feixe.",
                 "legacy": "Dados Relatorio Servico",
@@ -148,10 +165,12 @@ NAV: tuple[dict, ...] = (
     },
     {
         "label": "Sistema",
+        "icon": "settings",
         "items": (
             {
                 "href": "/machines",
                 "label": "Máquinas",
+                "icon": "cpu",
                 "match": ("/machines",),
                 "desc": "Cadastro dos equipamentos com IP e situação, e leitura do snapshot de cada loom.",
                 "legacy": "Coleta de Dados(Rede)",
@@ -160,6 +179,7 @@ NAV: tuple[dict, ...] = (
             {
                 "href": "/config",
                 "label": "Configurações",
+                "icon": "settings",
                 "match": ("/config",),
                 "desc": "Edita faixas de IP, lista de artigos, definição de turno e preferências de relatório.",
                 "legacy": "Ajuste de Relatorio / Ajuste Artigo / Trocar Ajuste Cronograma",
@@ -168,6 +188,7 @@ NAV: tuple[dict, ...] = (
             {
                 "href": "/docs",
                 "label": "API /docs",
+                "icon": "code",
                 "match": ("/docs",),
                 "desc": "Documentação interativa dos endpoints JSON e CSV que substituem os CGIs do sistema legado.",
                 "legacy": "—",
@@ -234,6 +255,14 @@ def index_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     gap_days = [row for row in gaps["days"] if row["status"] not in ("completed",)]
     gap_looms = [row for row in gaps["looms"] if row["missing_count"] >= 2]
 
+    (current_start, current_end), (previous_start, previous_end) = (
+        current_and_previous_months()
+    )
+    monthly = {
+        "current": month_summary(db, current_start, current_end),
+        "previous": month_summary(db, previous_start, previous_end),
+    }
+
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -246,6 +275,7 @@ def index_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
             "looms": looms,
             "missing": missing,
             "summary": summary,
+            "monthly": monthly,
             "gaps": gaps,
             "gap_days": gap_days,
             "gap_looms": gap_looms,

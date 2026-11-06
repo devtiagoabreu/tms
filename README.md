@@ -204,9 +204,15 @@ snapshot → `no_data`.
 
 A rota `/` é o dashboard operacional do **dia anterior**. Ela é alimentada por
 `GET /api/daily` e mostra: teares coletados, teares faltantes, eficiência/RPM
-médios, paradas do dia (trama/urdume/outros, com quantidade e minutos), a fila
-de retentativa com o motivo por tear e as **lacunas de coleta** dos últimos 7
-dias.
+médios, paradas do dia (trama/urdume/outros, com quantidade e minutos), a
+**produção mensal** (somatória de metros e pontos do mês atual e do mês
+anterior), a fila de retentativa com o motivo por tear e as **lacunas de
+coleta** dos últimos 7 dias.
+
+O menu lateral é recolhível (`#navToggle`) e o estado fica em `localStorage`.
+No modo trilho ele mostra apenas os ícones dos grupos; clicar em um ícone abre
+os itens daquele grupo em um flyout (drilldown). No modo expandido cada grupo
+também abre/fecha os próprios itens, e a página atual começa sempre aberta.
 
 A coleta é executada uma única vez por dia, sempre para o dia anterior:
 
@@ -244,16 +250,28 @@ tear ficou vários dias fora, cada dia aparece individualmente na lista —
 do dia.
 
 Prioridade das fontes por tear (a coluna `source` registra a escolhida):
-`agg_shift` → `daily_raw` → histórico de `live_status` do dia → leitura ao vivo
-no momento da coleta. Para o detalhamento de paradas:
+`agg_shift` → `daily_raw` → histórico embutido do tear (`d0`/`d1`) →
+histórico de `live_status` do dia → leitura ao vivo no momento da coleta. Para o
+detalhamento de paradas:
 
 - `agg_shift`/`daily_raw`: contagens e minutos exatos das 12 categorias;
-- histórico: a causa ativa de cada amostra é mapeada pelos bits do tear
-  (`BIT_PRECEDENCE`) em trama (`WEFT_MISS`, índice 5), urdume (`WARP_TOP` +
-  `WARP`, índices 0/1) e outros; os minutos vêm do intervalo entre amostras
-  (limitado a 5 min) e o total continua sendo o contador do próprio tear;
+- histórico embutido (`tms_get_monitor_data`, secção `stop_history`): eventos
+  `MH_dN` dos dois dias retidos pelo tear, usados só para dias passados
+  (`MH_t`/`current` nunca preenche um dia anterior); a produção diária é a soma
+  dos turnos `MJ_sN_yM_seisan` (ou `PM_yN_p5_seisan` quando aquele estiver
+  zerado);
+- histórico de `live_status`: a causa ativa de cada amostra é mapeada pelos bits
+  do tear (`BIT_PRECEDENCE`) em trama (`WEFT_MISS`, índice 5), urdume
+  (`WARP_TOP` + `WARP`, índices 0/1) e outros; os minutos vêm do intervalo entre
+  amostras (limitado a 5 min) e o total continua sendo o contador do próprio
+  tear;
 - sem detalhamento disponível: a UI mostra o total do contador e o aviso
   "sem detalhamento por causa" em vez de zeros falsos.
+
+A produção mensal usa `daily_loom_data` (`picks` = pontos, `meters` = metros).
+Para meses anteriores ao início da coleta, a rota cai automaticamente nos
+exports legados `C:\TMSDATA\<yyyy>-<mm>\daily\*.csv` (coluna 5 = pontos,
+coluna 10 = metros); o card indica "export legado" quando essa fonte é usada.
 
 Tear inalcançável (Power_off, timeout, IP ausente) não é coletado: o item fica
 `failed`, entra na fila de retentativa e aparece no dashboard como **faltante**,
@@ -321,6 +339,11 @@ paradas ÷ horas de operação, `RATE_PDAY = RATE_PH × 24`, `RATE_PP` = paradas
 produção da unidade) são calculados no servidor — o Excel do legado deixava
 essas células em branco. Sem o `period` explícito, ambos usam o `period` do
 selitem (default `shift`). `MAC_TYPE` aparece só quando há JAT e LWT na base.
+
+As telas preenchem automaticamente o último dia com dados agregados
+(`GET /api/screens/latest-day`) e executam a consulta ao abrir; o usuário pode
+trocar as datas, o período ou limpar os filtros e buscar novamente. Os dados
+históricos vêm da ingestão do `tmsdata/` legado (`python -m tms.ingest ...`).
 
 O `statushistory` é idêntico ao `efficiency` (colunas e taxas), apenas com o
 filtro `sel_mode` (por lista de teares ou estilos) como no legado. O `svsreport`

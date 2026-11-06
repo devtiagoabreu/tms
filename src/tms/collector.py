@@ -21,6 +21,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from tms.core import live as live_mod
@@ -28,6 +29,12 @@ from tms.core.live import LiveStatus, live_to_monitor_state, parse_live
 from tms.core.state import label as state_label
 
 LIVE_PATH = "/cgi-bin/ext.cgi?func=get_stat"
+# Payload completo: estado atual + contadores por turno + eventos de parada
+# (d0/d1) + configuração de turnos.  É a fonte de trama/urdume/outros.
+MONITOR_PATH = (
+    "/cgi-bin/ext.cgi?func=tms_get_monitor_data"
+    "&data1=current&data2=monitor&data3=shift&data4=history"
+)
 SCAN_PATH = "/TmsScanner/cgi-bin/mget.cgi"
 SCAN_BOUNDARY = "----------mget-boundary-strings----------"
 DEFAULT_TIMEOUT = 5.0
@@ -35,6 +42,14 @@ DEFAULT_TIMEOUT = 5.0
 _NOT_SUPPORTED_PREFIXES = ("Not supported.", "func(command) not found.")
 
 _SCAN_ID = re.compile(r"S([1-5])-([0-9]+)\.([0-9]+)")
+
+
+@dataclass
+class MonitorData:
+    """Resposta de ``tms_get_monitor_data`` (texto bruto ou código de erro)."""
+
+    text: Optional[str] = None
+    error: Optional[int] = None
 
 
 def _decode(data: bytes) -> str:
@@ -87,6 +102,34 @@ def fetch_live(
     if not lines or lines[0].startswith(_NOT_SUPPORTED_PREFIXES) or len(lines) == 20:
         return live_mod.error_status(live_mod.NOT_SUPPORT)
     return parse_live(lines)
+
+
+def fetch_monitor_data(
+    host: str,
+    *,
+    scheme: str = "http",
+    path: str = MONITOR_PATH,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> MonitorData:
+    """Coleta current/monitor/shift/history de um tear; nunca levanta.
+
+    O histórico embutido (``MH_d0``/``MH_d1``) é a fonte das paradas por causa
+    de dias passados ainda retidos no tear.  O chamador decide se pode usá-lo
+    (nunca se grava a secção ``current`` como se fosse um dia passado).
+    """
+    try:
+        with urllib.request.urlopen(_url(host, path, scheme), timeout=timeout) as response:
+            body = _decode(response.read())
+    except BaseException as exc:  # noqa: BLE001 - vira código de erro, nunca propaga
+        if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+            raise
+        return MonitorData(error=_error_code(exc))
+
+    if not body.strip() or "-TMS-DATA" not in body:
+        return MonitorData(error=live_mod.DATA_ERROR)
+    if body.startswith(_NOT_SUPPORTED_PREFIXES):
+        return MonitorData(error=live_mod.NOT_SUPPORT)
+    return MonitorData(text=body)
 
 
 def _scan_filename(mac_id: str) -> Optional[str]:

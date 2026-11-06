@@ -58,6 +58,18 @@ def normalize_machine_type(mac_type: Optional[str]) -> str:
     return _TYPE_ALIASES.get((mac_type or "").upper(), (mac_type or "JAT").upper())
 
 
+def normalize_machine_name(mac_name: Optional[str]) -> str:
+    """Padroniza nomes numéricos do legado em 5 dígitos (``0002`` → ``00002``).
+
+    Alguns arquivos antigos usam 4 dígitos e podem criar máquinas duplicadas
+    com o mesmo IP das máquinas atuais.
+    """
+    name = (mac_name or "").strip()
+    if name.isdigit() and 0 < len(name) < 5:
+        return name.zfill(5)
+    return name
+
+
 @dataclass
 class IngestStats:
     """Contadores do que foi ingerido (útil p/ relatório/diagnóstico)."""
@@ -101,6 +113,7 @@ def ensure_machine(
     ip_addr: Optional[str] = None,
 ) -> tuple[Machine, bool]:
     """Busca/cria `machines` por `mac_name`. Retorna (máquina, criada)."""
+    mac_name = normalize_machine_name(mac_name)
     machine = db.execute(
         select(Machine).where(Machine.mac_name == mac_name)
     ).scalar_one_or_none()

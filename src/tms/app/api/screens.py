@@ -13,11 +13,13 @@ import csv
 import io
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from tms import config_service as cfg
 from tms.core.formulas import UNIT_PICK
 from tms.db.base import get_db
+from tms.models.runtime import AggShift
 from tms.reporting import PERIODS, WEEK_START
 from tms.reporting import history
 from tms.reporting import periods as reporting
@@ -42,6 +44,14 @@ def Sel() -> Query:
 
 
 HistoryData = Query("shift", pattern="^(shift|operator)$")
+
+
+@router.get("/latest-day")
+def latest_day(db: Session = Depends(get_db)) -> dict:
+    """Último dia com dados agregados (usado como padrão das telas)."""
+    shift_id = db.execute(select(func.max(AggShift.shift_id))).scalar_one_or_none()
+    day = shift_id[:10] if shift_id else None
+    return {"day": day, "day_from": day, "day_to": day, "shift_id": shift_id}
 
 
 def _rows(

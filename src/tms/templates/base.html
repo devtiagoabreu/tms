@@ -4,14 +4,81 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title or 'TMS' }}</title>
+  <script>
+    try {
+      if (localStorage.getItem('tms-sidebar-collapsed') === '1') {
+        document.documentElement.classList.add('sidebar-collapsed');
+      }
+    } catch (e) { /* localStorage indisponível */ }
+  </script>
   <link rel="stylesheet" href="/static/css/style.css">
   <script>try{var t=localStorage.getItem('tms-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 </head>
 <body>
+{% macro nav_icon(name) -%}
+<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  {%- if name == 'dashboard' -%}
+  <rect x="2" y="2" width="5" height="5" rx="1"/>
+  <rect x="9" y="2" width="5" height="5" rx="1"/>
+  <rect x="2" y="9" width="5" height="5" rx="1"/>
+  <rect x="9" y="9" width="5" height="5" rx="1"/>
+  {%- elif name == 'reports' -%}
+  <path d="M4 1.8h5l3 3V14H4z"/>
+  <path d="M9 1.8V5h3M6 8h4M6 10.5h4"/>
+  {%- elif name == 'layers' -%}
+  <path d="m8 1.8 6 3-6 3-6-3z"/>
+  <path d="m2 8 6 3 6-3M2 11.2l6 3 6-3"/>
+  {%- elif name == 'monitor' -%}
+  <rect x="1.8" y="2.5" width="12.4" height="8.5" rx="1.2"/>
+  <path d="M5.5 14h5M8 11v3"/>
+  {%- elif name == 'chart' -%}
+  <path d="M2 14V2M2 14h12"/>
+  <path d="M5 11v-3M8 11V6M11 11V4"/>
+  {%- elif name == 'bolt' -%}
+  <path d="M9 1.5 3.5 9H8l-1 5.5L12.5 7H8z"/>
+  {%- elif name == 'box' -%}
+  <path d="M8 1.8 14 5v6l-6 3.2L2 11V5z"/>
+  <path d="M2 5l6 3 6-3M8 8v6"/>
+  {%- elif name == 'alert' -%}
+  <path d="M8 2 1.5 13.5h13z"/>
+  <path d="M8 6v3.5M8 11.7v.3"/>
+  {%- elif name == 'clock' -%}
+  <circle cx="8" cy="8" r="6"/>
+  <path d="M8 4.5V8l2.5 1.5"/>
+  {%- elif name == 'tag' -%}
+  <path d="M2 2h5.5L14 8.5 8.5 14 2 7.5z"/>
+  <circle cx="5" cy="5" r="1"/>
+  {%- elif name == 'list' -%}
+  <path d="M5 4h9M5 8h9M5 12h9"/>
+  <circle cx="2.5" cy="4" r=".8"/><circle cx="2.5" cy="8" r=".8"/><circle cx="2.5" cy="12" r=".8"/>
+  {%- elif name == 'activity' -%}
+  <path d="M1.5 8h3l1.5-4 3 8 1.5-4h4"/>
+  {%- elif name == 'history' -%}
+  <path d="M3 3v4h4"/>
+  <path d="M3.5 7a5 5 0 1 1 1 5.5"/>
+  <path d="M8 5.5V8l2 1.2"/>
+  {%- elif name == 'wrench' -%}
+  <path d="M10.5 2.5a3.5 3.5 0 0 0-4.7 4.2L2 10.5 5.5 14l3.8-3.8a3.5 3.5 0 0 0 4.2-4.7l-2 2-2.5-2.5z"/>
+  {%- elif name == 'cpu' -%}
+  <rect x="4" y="4" width="8" height="8" rx="1.2"/>
+  <rect x="6.5" y="6.5" width="3" height="3" rx=".5"/>
+  <path d="M6 1.5V4M10 1.5V4M6 12v2.5M10 12v2.5M1.5 6H4M1.5 10H4M12 6h2.5M12 10h2.5"/>
+  {%- elif name == 'settings' -%}
+  <path d="M3 4h10M3 8h10M3 12h10"/>
+  <circle cx="6" cy="4" r="1.4"/><circle cx="10" cy="8" r="1.4"/><circle cx="5" cy="12" r="1.4"/>
+  {%- elif name == 'code' -%}
+  <path d="M5.5 4 2 8l3.5 4M10.5 4 14 8l-3.5 4"/>
+  {%- else -%}
+  <circle cx="8" cy="8" r="5"/>
+  {%- endif -%}
+</svg>
+{%- endmacro %}
 <div class="shell">
   <header class="topbar">
     <div class="topbar-inner">
-      <button class="icon-btn sidebar-toggle" id="navToggle" aria-label="Menu">
+      <button class="icon-btn sidebar-toggle" id="navToggle" type="button"
+              aria-label="Recolher menu" aria-controls="sidebar" aria-expanded="true" title="Recolher menu">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
           <path d="M2 4h12M2 8h12M2 12h12"/>
         </svg>
@@ -47,33 +114,50 @@
   <div class="layout">
     <aside class="sidebar" id="sidebar">
       {% set path = request.url.path if request else '/' %}
-      <nav>
+      <nav aria-label="Navegação principal">
         {% for group in nav %}
-        <div class="nav-group">
-          <div class="nav-label">{{ group.label }}</div>
-          {% for item in group['items'] %}
-          {% set is_active = path in item['match'] %}
-          <a class="nav-item {% if is_active %}active{% endif %}"
-             href="{{ item.href }}"
-             {% if item.href == '/docs' %}target="_blank" rel="noopener"{% endif %}>
-            <span class="dot"></span>
-            <span class="nav-text">{{ item.label }}</span>
-            <span class="nav-tip" role="tooltip">
-              <span class="nav-tip-desc">{{ item.desc }}</span>
-              <span class="nav-tip-row">
-                <span class="nav-tip-key">Menu legado</span>
-                <span class="nav-tip-val">{{ item.legacy }}</span>
+        {% set ns = namespace(active=false) %}
+        {% for item in group['items'] %}
+        {% if path in item['match'] %}{% set ns.active = true %}{% endif %}
+        {% endfor %}
+        <div class="nav-group{% if ns.active %} is-active{% endif %}" data-nav-group="{{ loop.index }}">
+          <button class="nav-label nav-group-toggle" type="button" aria-expanded="true"
+                  aria-controls="nav-group-{{ loop.index }}" title="{{ group.label }}">
+            <span class="nav-group-icon">{{ nav_icon(group['icon']) }}</span>
+            <span class="nav-group-label">{{ group.label }}</span>
+            <svg class="nav-chevron" width="12" height="12" viewBox="0 0 16 16" fill="none"
+                 stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m4 6 4 4 4-4"/>
+            </svg>
+          </button>
+          <div class="nav-items" id="nav-group-{{ loop.index }}" data-label="{{ group.label }}">
+            {% for item in group['items'] %}
+            {% set is_active = path in item['match'] %}
+            <a class="nav-item {% if is_active %}active{% endif %}"
+               href="{{ item.href }}"
+               title="{{ item.label }}"
+               {% if is_active %}aria-current="page"{% endif %}
+               {% if item.href == '/docs' %}target="_blank" rel="noopener"{% endif %}>
+              <span class="nav-icon-wrap">{{ nav_icon(item['icon']) }}</span>
+              <span class="nav-text">{{ item.label }}</span>
+              <span class="nav-tip" role="tooltip">
+                <span class="nav-tip-desc">{{ item.desc }}</span>
+                <span class="nav-tip-row">
+                  <span class="nav-tip-key">Menu legado</span>
+                  <span class="nav-tip-val">{{ item.legacy }}</span>
+                </span>
+                {% if item.legacy_path and item.legacy_path != '—' %}
+                <span class="nav-tip-path">{{ item.legacy_path }}</span>
+                {% endif %}
               </span>
-              {% if item.legacy_path and item.legacy_path != '—' %}
-              <span class="nav-tip-path">{{ item.legacy_path }}</span>
-              {% endif %}
-            </span>
-          </a>
-          {% endfor %}
+            </a>
+            {% endfor %}
+          </div>
         </div>
         {% endfor %}
       </nav>
     </aside>
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
     <main>
       {% block content %}{% endblock %}

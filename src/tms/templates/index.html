@@ -20,6 +20,7 @@
   'agg_shift': 'Agregado',
   'daily_raw': 'Bruto',
   'history': 'Histórico',
+  'loom_history': 'Histórico do tear',
   'live': 'Ao vivo',
 } %}
 
@@ -123,6 +124,38 @@
       detalhamento por causa indisponível
       {% endif %}
     </span>
+  </div>
+</div>
+
+<div class="card monthly-card">
+  <div class="card-head">
+    <div>
+      <h2 class="card-title">Produção mensal</h2>
+      <p class="muted" style="margin:4px 0 0;font-size:0.8125rem">
+        Somatória de metros e pontos do mês atual e do mês passado
+      </p>
+    </div>
+  </div>
+  <div class="monthly-grid">
+    {% for label, data in [('Mês atual', monthly.current), ('Mês passado', monthly.previous)] %}
+    <div class="monthly-item">
+      <span class="monthly-label">{{ label }} &middot; {{ data.start.strftime('%m/%Y') }}</span>
+      <div class="monthly-metrics">
+        <div class="monthly-metric">
+          <strong>{{ '%.1f'|format(data.meters)|replace('.', ',') }}</strong>
+          <span>metros</span>
+        </div>
+        <div class="monthly-metric">
+          <strong>{{ '%.1f'|format(data.points)|replace('.', ',') }}</strong>
+          <span>pontos</span>
+        </div>
+      </div>
+      <span class="monthly-sub">
+        {{ data.days }} dia(s) com produção
+        {% if data.source == 'legacy_csv' %} &middot; export legado{% endif %}
+      </span>
+    </div>
+    {% endfor %}
   </div>
 </div>
 

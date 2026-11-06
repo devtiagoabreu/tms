@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, time
+from datetime import date, datetime, time
 from typing import Dict, List, Optional
 
 from tms.ingest._common import (
@@ -107,6 +107,8 @@ class LoomFile:
     current_shift: Optional[MoniShift] = None
     next_shift: Optional[MoniShift] = None
     pick: Optional[MoniShift] = None
+    pick_days: Dict[date, MoniShift] = field(default_factory=dict)
+    shift_days: Dict[date, MoniShift] = field(default_factory=dict)
     pick_now_p: int = 0
     shift_mode: int = 0
     simple: List[str] = field(default_factory=list)
@@ -174,6 +176,19 @@ def _parse_moni_group(monitor: Dict[str, str], prefix: str) -> Optional[MoniShif
         en=[to_int(monitor.get(f"{prefix}_en{i}", "")) for i in range(3)],
         op=monitor.get(f"{prefix}_op", ""),
     )
+
+
+def _add_moni(total: MoniShift, part: MoniShift) -> None:
+    """Soma os contadores de um turno no acumulado do dia."""
+    if not total.seisan:
+        total.seisan = [0] * max(len(part.seisan), 4)
+    while len(total.seisan) < len(part.seisan):
+        total.seisan.append(0)
+    for index, value in enumerate(part.seisan):
+        total.seisan[index] += value
+    total.rt += part.rt
+    total.to += part.to
+    total.tm = total.tm or part.tm
 
 
 def parse_loom_file(text: str) -> LoomFile:
@@ -261,6 +276,32 @@ def parse_loom_file(text: str) -> LoomFile:
             result.next_shift = _parse_moni_group(monitor, "MJ_t_s1")
             result.pick = _parse_moni_group(monitor, "PM_t_p5")
             result.pick_now_p = to_int(monitor.get("PM_i_now_p", ""))
+
+            # Produção diária: PM_t (dia corrente) e PM_y0..y6 (dias anteriores).
+            for prefix in ("PM_t", *(f"PM_y{i}" for i in range(7))):
+                group = _parse_moni_group(monitor, f"{prefix}_p5")
+                if group is None:
+                    continue
+                day_dt = parse_timestamp(monitor.get(f"{prefix}_pd_tm", "").split())
+                if day_dt is None:
+                    day_dt = parse_timestamp(monitor.get(f"{prefix}_p5_ss0", "").split())
+                if day_dt is not None:
+                    result.pick_days[day_dt.date()] = group
+
+            # Produção por turno: MJ_s0..s4_y0..y6.  É a fonte usada pelo
+            # legado nos relatórios de turno e existe mesmo quando a análise de
+            # pick (PM_yN) está desabilitada no tear.
+            for shift_index in range(5):
+                for day_index in range(7):
+                    group = _parse_moni_group(
+                        monitor, f"MJ_s{shift_index}_y{day_index}"
+                    )
+                    if group is None or group.tm is None:
+                        continue
+                    day = group.tm.date()
+                    if day not in result.shift_days:
+                        result.shift_days[day] = MoniShift()
+                    _add_moni(result.shift_days[day], group)
 
         elif name == "shift":
             for line in body:

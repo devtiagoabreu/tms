@@ -87,6 +87,8 @@ class DailyLoomData(Base):
     style: Mapped[str | None] = mapped_column(String(64))
     beam: Mapped[str | None] = mapped_column(String(32))
     production: Mapped[float | None] = mapped_column(Float)
+    picks: Mapped[float | None] = mapped_column(Float)
+    meters: Mapped[float | None] = mapped_column(Float)
     efficiency: Mapped[float | None] = mapped_column(Float)
     rpm: Mapped[float | None] = mapped_column(Float)
     run_time_min: Mapped[float | None] = mapped_column(Float)

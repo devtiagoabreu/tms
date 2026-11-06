@@ -14,6 +14,19 @@ LWT = "LWT"
 N_CATEGORIES = 12
 
 # Índices das 12 categorias finais (arrays stop_ct/stop_tm agregados).
+WARP_TOP_MISS = 0
+WARP_MISS = 1
+FALSE_SELVAGE_MISS = 2
+LENO_L_MISS = 3
+LENO_R_MISS = 4
+WEFT_MISS = 5
+WARP_OUT = 6
+CLOTH_DOFFING = 7
+MANUAL_STOP = 8
+POWER_OFF = 9
+OTHER_STOP = 10
+CC_BACK = 11
+
 CATEGORY_KEYS: List[str] = [
     "WARP_TOP_MISS",     # 0
     "WARP_MISS",         # 1
@@ -222,3 +235,71 @@ def get_stop_cause(code: str, mac_type: str = "JAT", lang: str = "en") -> str:
     if label is None:
         label = code
     return label
+
+
+# Códigos brutos de `stop_history` que caem em cada categoria.  O histórico do
+# tear usa o código de 4 dígitos (ex.: ``0004`` = trama WF1 cor 1), diferente
+# dos índices dos contadores de 40/31 posições usados em `get_detail_stop_*`.
+_JAT_WEFT_CODES = frozenset(f"{i:04d}" for i in range(4, 22))
+_LWT_WEFT_CODES = frozenset(f"{i:04d}" for i in range(5, 13))
+
+
+def category_for_code(code: str, mac_type: str = "JAT") -> int:
+    """Mapeia um código bruto de parada para o índice das 12 categorias.
+
+    Trama e urdume são as duas categorias que o dashboard separa; todo o
+    restante (ourela, giro, manual, troca de rolo, outros) cai em "outros".
+    """
+    code = (code or "").strip()
+    if not code:
+        return OTHER_STOP
+
+    if mac_type.upper().startswith("LWT") or mac_type.upper().startswith("LW"):
+        if code == "0000":
+            return WARP_MISS
+        if code in ("0001", "0002"):
+            return FALSE_SELVAGE_MISS
+        if code == "0003":
+            return LENO_R_MISS
+        if code == "0004":
+            return LENO_L_MISS
+        if code in _LWT_WEFT_CODES:
+            return WEFT_MISS
+        if code == "0013":
+            return CLOTH_DOFFING
+        if code in ("0014", "0015"):
+            return MANUAL_STOP
+        if code == "2153":
+            return WARP_OUT
+        if code == "2154":
+            return CLOTH_DOFFING
+        if code in ("2100", "2150", "2151", "2155"):
+            return MANUAL_STOP
+        return OTHER_STOP
+
+    # JAT / JAT710
+    if code == "0000":
+        return WARP_MISS
+    if code == "0001":
+        return FALSE_SELVAGE_MISS
+    if code == "0002":
+        return LENO_R_MISS
+    if code == "0003":
+        return LENO_L_MISS
+    if code in _JAT_WEFT_CODES:
+        return WEFT_MISS
+    if code == "0025":
+        return CLOTH_DOFFING
+    if code in ("0027", "0028"):
+        return MANUAL_STOP
+    if code in ("2414", "2415"):
+        return WARP_MISS
+    if code in ("2420", "2421", "2422"):
+        return CLOTH_DOFFING
+    if code == "2153":
+        return WARP_OUT
+    if code == "2154":
+        return CLOTH_DOFFING
+    if code in ("2101", "2150", "2151", "2155"):
+        return MANUAL_STOP
+    return OTHER_STOP

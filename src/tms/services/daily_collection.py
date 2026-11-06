@@ -35,13 +35,15 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from tms.collector import fetch_live
+from tms.collector import fetch_live, fetch_monitor_data
 from tms.core.formulas import effic
 from tms.core.live import BIT_PRECEDENCE, live_to_monitor_state
 from tms.core.stopcodes import get_detail_stop
+from tms.ingest.loom_file import parse_loom_file
 from tms.models.daily import DailyCollectionItem, DailyCollectionRun, DailyLoomData
 from tms.models.masters import Machine
 from tms.models.runtime import AggShift, DailyRaw, LiveStatusRecord
+from tms.services.loom_history import day_production, day_stops
 
 log = logging.getLogger(__name__)
 
@@ -178,6 +180,8 @@ def _metrics_from_agg(agg: AggShift) -> dict:
         "style": agg.style,
         "beam": agg.beam,
         "production": _sum_seisan(agg.seisan_1, agg.seisan_2, agg.seisan_3),
+        "picks": _sum_seisan(agg.seisan_1, agg.off_prod_1),
+        "meters": _sum_seisan(agg.seisan_2, agg.off_prod_2),
         "efficiency": agg.effic,
         "run_time_min": agg.run_tm,
         "stop_time_min": agg.stop_ttm,
@@ -194,16 +198,34 @@ def _metrics_from_raw(raw: DailyRaw, machine: Machine) -> dict:
     stop_min = (raw.stop_ttm or 0) / 60.0 if raw.stop_ttm is not None else None
     seisan = raw.seisan or {}
     production = None
+    picks = meters = None
     if isinstance(seisan, dict) and seisan:
-        vals = [v for k, v in sorted(seisan.items()) if isinstance(v, (int, float))]
-        if vals:
-            production = round(sum(vals) / 10.0, 3)
+        values = seisan.get("seisan") or []
+        off_values = seisan.get("off_prod") or []
+        if isinstance(values, list) and values:
+            production = round(sum(v for v in values if isinstance(v, (int, float))) / 10.0, 3)
+            pick_raw = float(values[0]) if values and isinstance(values[0], (int, float)) else 0.0
+            meter_raw = float(values[1]) if len(values) > 1 and isinstance(values[1], (int, float)) else 0.0
+            off_pick = (
+                float(off_values[0])
+                if off_values and isinstance(off_values[0], (int, float))
+                else 0.0
+            )
+            off_meter = (
+                float(off_values[1])
+                if len(off_values) > 1 and isinstance(off_values[1], (int, float))
+                else 0.0
+            )
+            picks = round((pick_raw + off_pick) / 10.0, 3)
+            meters = round((meter_raw + off_meter) / 10.0, 3)
     return {
         "source": "daily_raw",
         "shift_id": raw.shift_id,
         "style": None,
         "beam": None,
         "production": production,
+        "picks": picks,
+        "meters": meters,
         "efficiency": effic(run_min or 0.0, stop_min or 0.0) if run_min is not None else None,
         "run_time_min": round(run_min, 3) if run_min is not None else None,
         "stop_time_min": round(stop_min, 3) if stop_min is not None else None,
@@ -318,18 +340,105 @@ def _metrics_from_live(live) -> dict:
     }
 
 
-def _resolve_metrics(db: Session, machine: Machine, day: date, live) -> dict:
-    """Combina as fontes disponiveis, priorizando o dado agregado do legado."""
-    metrics = _stored_metrics(db, machine, day) or {"source": "live"}
+def _metrics_from_monitor(payload, machine: Machine, day: date) -> Optional[dict]:
+    """Paradas por causa e produção diária a partir do payload do tear (d0/d1).
 
-    live_metrics = _metrics_from_live(live)
-    # Completa lacunas com a leitura ao vivo (sempre disponivel no sucesso).
-    for key, value in live_metrics.items():
-        if key == "source":
-            continue
-        if metrics.get(key) is None:
-            metrics[key] = value
+    O histórico de paradas pode não existir para o dia (sem eventos), mas a
+    produção diária em ``PM_yN_p5_seisan`` ainda pode estar disponível.
+    """
+    text = getattr(payload, "text", None)
+    if text is None:
+        return None
+    loom = parse_loom_file(text)
+    summary = day_stops(loom, day, machine.mac_type or "JAT")
+    production = day_production(loom, day)
+    if summary is None and production is None:
+        return None
+
+    metrics = {
+        "source": "loom_history",
+        "shift_id": None,
+        "style": loom.style or None,
+        "beam": loom.beam or None,
+        "production": None,
+        "picks": None,
+        "meters": None,
+        "efficiency": None,
+        "rpm": None,
+        "run_time_min": None,
+        "stop_time_min": None,
+    }
+    if production is not None:
+        metrics.update(
+            picks=production.picks,
+            meters=production.meters,
+            run_time_min=production.run_minutes,
+            stop_time_min=production.stop_minutes,
+        )
+    if summary is not None:
+        metrics.update(
+            stop_time_min=round(summary.total_minutes, 3),
+            **_stop_breakdown(summary.counts, summary.minutes),
+        )
     return metrics
+
+
+def _resolve_metrics(
+    db: Session,
+    machine: Machine,
+    day: date,
+    live=None,
+    monitor=None,
+) -> Optional[dict]:
+    """Combina as fontes disponiveis.
+
+    Prioridade: ``agg_shift`` → ``daily_raw`` → histórico do tear →
+    ``live_status``.  A leitura ao vivo apenas completa campos ausentes (RPM,
+    eficiência, produção); ela nunca substitui uma contagem por causa.
+    """
+    stored = _stored_metrics(db, machine, day)
+    loom_metrics = _metrics_from_monitor(monitor, machine, day)
+
+    if stored is not None and stored.get("source") in ("agg_shift", "daily_raw"):
+        metrics = stored
+    elif loom_metrics is not None:
+        metrics = loom_metrics
+        if stored is not None:
+            for key, value in stored.items():
+                if metrics.get(key) is None:
+                    metrics[key] = value
+    else:
+        metrics = stored
+
+    if metrics is None:
+        if live is None:
+            return None
+        metrics = {"source": "live"}
+
+    if live is not None:
+        # Completa lacunas com a leitura ao vivo (sempre disponivel no sucesso).
+        for key, value in _metrics_from_live(live).items():
+            if key == "source":
+                continue
+            if metrics.get(key) is None:
+                metrics[key] = value
+    return metrics
+
+
+def _machines_needing_breakdown(db: Session, day: date) -> set[int]:
+    """Teares cujo dia tem paradas, mas ainda não tem trama/urdume/outros."""
+    return set(
+        db.execute(
+            select(DailyLoomData.machine_id).where(
+                DailyLoomData.collection_date == day,
+                DailyLoomData.total_stop_ct.is_not(None),
+                DailyLoomData.total_stop_ct > 0,
+                DailyLoomData.trama_stops.is_(None),
+                DailyLoomData.urdume_stops.is_(None),
+                DailyLoomData.outros_stops.is_(None),
+            )
+        ).scalars()
+    )
 
 
 def _stored_metrics(db: Session, machine: Machine, day: date) -> Optional[dict]:
@@ -381,6 +490,8 @@ def _upsert_loom_data(
         "style",
         "beam",
         "production",
+        "picks",
+        "meters",
         "efficiency",
         "rpm",
         "run_time_min",
@@ -420,6 +531,7 @@ def _collect_one(
     day: date,
     prefetched: Optional[tuple] = None,
     allow_live: bool = True,
+    monitor_allowed: bool = False,
 ) -> str:
     """Coleta um tear. Retorna ``"success"``, ``"retry"`` ou ``"no_source"``."""
     machine = db.get(Machine, item.machine_id)
@@ -433,8 +545,12 @@ def _collect_one(
 
     if not allow_live:
         # Dia passado: so fontes historicas. Nunca gravar o estado atual do tear
-        # como se fosse o do dia.
-        metrics = _stored_metrics(db, machine, day)
+        # como se fosse o do dia. O histórico embutido (d0/d1) é histórico e
+        # pode ser usado, mas a secção `current` do mesmo payload é ignorada.
+        monitor = None
+        if prefetched is not None:
+            _live, monitor, _exc = prefetched
+        metrics = _resolve_metrics(db, machine, day, monitor=monitor)
         if metrics is None:
             item.status = "no_source"
             item.error_reason = "Sem fonte de dados para este dia"
@@ -457,7 +573,7 @@ def _collect_one(
         return "retry"
 
     if prefetched is not None:
-        live, exc = prefetched
+        live, monitor, exc = prefetched
         if exc is not None:
             item.status = "failed"
             item.error_reason = f"Erro inesperado: {exc}"
@@ -469,14 +585,27 @@ def _collect_one(
             item.status = "failed"
             item.error_reason = f"Erro inesperado: {exc}"
             return "retry"
+        monitor = None
+        if monitor_allowed:
+            try:
+                monitor = fetch_monitor_data(machine.ip_addr, timeout=10.0)
+            except Exception:  # pragma: no cover - fetch_monitor_data nao levanta
+                monitor = None
 
     reason = _classify_error(live)
-    if reason:
+    monitor_metrics = _metrics_from_monitor(monitor, machine, day)
+    if reason and monitor_metrics is None:
         item.status = "failed"
         item.error_reason = reason
         return "retry"
 
-    metrics = _resolve_metrics(db, machine, day, live)
+    if reason:
+        # O status ao vivo falhou, mas o histórico do tear tem os dados do dia:
+        # melhor registrar a fonte histórica do que perder o dia inteiro.
+        metrics = monitor_metrics
+    else:
+        metrics = _resolve_metrics(db, machine, day, live=live, monitor=monitor)
+
     _upsert_loom_data(db, day, machine, metrics, live)
 
     item.status = "success"
@@ -539,8 +668,19 @@ def _ensure_items(db: Session, run: DailyCollectionRun) -> dict[int, DailyCollec
     return existing
 
 
-def _fetch_many(db: Session, items: list[DailyCollectionItem]) -> dict[int, tuple]:
-    """Le os teares em paralelo (rede) para nao somar timeouts em serie."""
+def _fetch_many(
+    db: Session,
+    items: list[DailyCollectionItem],
+    *,
+    allow_live: bool = True,
+    with_monitor: bool = False,
+) -> dict[int, tuple]:
+    """Le os teares em paralelo (rede) para nao somar timeouts em serie.
+
+    Cada valor e ``(live, monitor, exc)``.  Mesmo com ``allow_live=False`` o
+    payload de histórico (``monitor``) pode ser buscado: ele contém os dias
+    ``d0``/``d1`` e é a única forma de recuperar trama/urdume de um dia passado.
+    """
     from concurrent.futures import ThreadPoolExecutor
 
     machines = {
@@ -552,14 +692,21 @@ def _fetch_many(db: Session, items: list[DailyCollectionItem]) -> dict[int, tupl
 
     def work(item: DailyCollectionItem):
         machine = machines.get(item.machine_id)
-        if machine is None:
-            return item.machine_id, (None, None)
-        if not machine.ip_addr:
-            return item.machine_id, (None, None)
-        try:
-            return item.machine_id, (fetch_live(machine.ip_addr, timeout=10.0), None)
-        except Exception as exc:  # pragma: no cover
-            return item.machine_id, (None, exc)
+        if machine is None or not machine.ip_addr:
+            return item.machine_id, (None, None, None)
+        live = None
+        monitor = None
+        if allow_live:
+            try:
+                live = fetch_live(machine.ip_addr, timeout=10.0)
+            except Exception as exc:  # pragma: no cover
+                return item.machine_id, (None, None, exc)
+        if with_monitor:
+            try:
+                monitor = fetch_monitor_data(machine.ip_addr, timeout=15.0)
+            except Exception:  # pragma: no cover - fetch_monitor_data nao levanta
+                monitor = None
+        return item.machine_id, (live, monitor, None)
 
     with ThreadPoolExecutor(max_workers=8) as pool:
         return dict(pool.map(work, items))
@@ -579,12 +726,13 @@ def collect_daily_data(
     """
     day = collection_date or get_yesterday()
     run, created = ensure_collection_run(db, day)
+    incomplete = _machines_needing_breakdown(db, day)
 
     if not created and not force:
         if run.status == "running":
             log.info("Coleta de %s ja em andamento; ignorando", day)
             return run
-        if not retry_only and run.status == "completed":
+        if not retry_only and run.status == "completed" and not incomplete:
             log.info("Coleta de %s ja concluida; nada a fazer", day)
             return run
 
@@ -599,12 +747,30 @@ def collect_daily_data(
     elif force or created:
         targets = list(items.values())
     else:
-        targets = [i for i in items.values() if i.status != "success" or i.in_retry_queue]
+        targets = [
+            i
+            for i in items.values()
+            if i.status != "success" or i.in_retry_queue or i.machine_id in incomplete
+        ]
 
-    prefetched = _fetch_many(db, targets) if targets and allow_live else {}
+    # O payload de histórico do tear guarda d0/d1. Para o dia anterior e o
+    # anteanterior vale a pena buscá-lo mesmo sem leitura ao vivo.
+    monitor_window = day >= get_yesterday() - timedelta(days=1)
+    prefetched = (
+        _fetch_many(
+            db, targets, allow_live=allow_live, with_monitor=monitor_window
+        )
+        if targets
+        else {}
+    )
     for item in targets:
         result = _collect_one(
-            db, item, day, prefetched.get(item.machine_id), allow_live=allow_live
+            db,
+            item,
+            day,
+            prefetched.get(item.machine_id),
+            allow_live=allow_live,
+            monitor_allowed=monitor_window,
         )
         item.in_retry_queue = result == "retry"
     db.flush()
@@ -656,10 +822,20 @@ def retry_pending(
 
     run.status = "running"
     run.started_at = datetime.utcnow()
-    prefetched = _fetch_many(db, due) if allow_live else {}
+    monitor_window = day >= get_yesterday() - timedelta(days=1)
+    prefetched = (
+        _fetch_many(db, due, allow_live=allow_live, with_monitor=monitor_window)
+        if due
+        else {}
+    )
     for item in due:
         result = _collect_one(
-            db, item, day, prefetched.get(item.machine_id), allow_live=allow_live
+            db,
+            item,
+            day,
+            prefetched.get(item.machine_id),
+            allow_live=allow_live,
+            monitor_allowed=monitor_window,
         )
         item.in_retry_queue = result == "retry"
     db.flush()
@@ -787,14 +963,25 @@ def ensure_daily_collection(db: Session, *, respect_hour: bool = True) -> Option
         return None
 
     day = get_yesterday()
-    run = db.execute(
-        select(DailyCollectionRun).where(DailyCollectionRun.collection_date == day)
-    ).scalar_one_or_none()
 
-    if run is None:
-        run = collect_daily_data(db, day)
-    elif run.retry_count > 0:
-        run = retry_pending(db, day)
+    def sync(target: date) -> Optional[DailyCollectionRun]:
+        run = db.execute(
+            select(DailyCollectionRun).where(
+                DailyCollectionRun.collection_date == target
+            )
+        ).scalar_one_or_none()
+        if (
+            run is None
+            or run.retry_count > 0
+            or _machines_needing_breakdown(db, target)
+        ):
+            return collect_daily_data(db, target, allow_live=(target >= day))
+        return run
+
+    run = sync(day)
+    # O tear guarda dois dias (d0/d1). Reprocessar o dia anterior a ontem
+    # preenche trama/urdume de dias que ficaram sem detalhamento.
+    sync(day - timedelta(days=1))
 
     # Dias em que a aplicacao ficou fora do ar ganham registro explicito (lacuna),
     # sem leitura ao vivo: o dado do passado so pode vir de fonte historica.

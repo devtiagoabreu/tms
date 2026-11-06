@@ -172,6 +172,15 @@ def test_screens_invalid_period(client):
     assert client.get("/api/screens/efficiency", params={"period": "hour"}).status_code == 404
 
 
+def test_latest_day_endpoint(client):
+    response = client.get("/api/screens/latest-day")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["day"] == "2025.10.01"
+    assert body["day_from"] == body["day_to"] == "2025.10.01"
+    assert body["shift_id"] == "2025.10.01.0"
+
+
 def test_report_shift_period(session):
     """period=shift agrupa por shift_id (chave = 2025.10.01.0)."""
     rows = reporting.report(session, "shift", key="2025.10.01.0")
