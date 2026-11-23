@@ -71,7 +71,8 @@ MENUS_SEED = [
             {"title": "Grupos de Teares", "url": "/cadastros", "icon": "cpu", "ordem": 4},
             {"title": "Cadastro de Teares", "url": "/teares", "icon": "cpu", "ordem": 5},
             {"title": "Configurar Menus", "url": "/menus", "icon": "settings", "ordem": 6},
-            {"title": "API /docs", "url": "/docs", "icon": "code", "ordem": 7},
+            {"title": "Cadastro de Turnos", "url": "/turnos", "icon": "clock", "ordem": 7},
+            {"title": "API /docs", "url": "/docs", "icon": "code", "ordem": 8},
         ],
     },
 ]
