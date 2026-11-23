@@ -248,5 +248,5 @@ def test_dashboard_mostra_card_de_producao_mensal(client, session):
 
     assert response.status_code == 200
     assert "Produção mensal" in response.text
-    assert "12,5" in response.text
-    assert "99,0" in response.text
+    assert "125,0" in response.text
+    assert "990,0" in response.text

@@ -1,0 +1,393 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <h1 class="page-title">Teares</h1>
+  <p class="page-sub">Cadastro de teares e envio de comandos para a fila de máquinas.</p>
+</div>
+
+<div id="msg" style="margin-bottom:1rem"></div>
+
+<div class="grid">
+  <!-- LISTA DE TEARES -->
+  <div class="card-pdm">
+    <div class="card-pdm-header">
+      <div>
+        <h2 class="card-pdm-title">Cadastro de Teares</h2>
+        <p class="card-pdm-description">Teares cadastrados e seus grupos.</p>
+      </div>
+      <button class="btn-pdm btn-pdm-default btn-pdm-sm" onclick="openTearForm()">+ Novo Tear</button>
+    </div>
+    <div class="card-pdm-content">
+      <div class="form-row" style="margin-bottom:12px;">
+        <select id="filtro-grupo" class="select-pdm" onchange="filtrarPorGrupo()">
+          <option value="">Todos os grupos</option>
+        </select>
+      </div>
+      <table class="table-pdm">
+        <thead>
+          <tr>
+            <th style="width:6%">#</th>
+            <th style="width:16%">Tear</th>
+            <th style="width:12%">Tipo</th>
+            <th style="width:16%">IP</th>
+            <th style="width:20%">Grupo</th>
+            <th style="width:10%">Ativo</th>
+            <th style="width:20%">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="teares-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- COMANDOS PENDENTES -->
+  <div class="card-pdm">
+    <div class="card-pdm-header">
+      <div>
+        <h2 class="card-pdm-title">Comandos Enviados (fila)</h2>
+        <p class="card-pdm-description">Comandos enviados e seu estado de execução.</p>
+      </div>
+    </div>
+    <div class="card-pdm-content">
+      <table class="table-pdm">
+        <thead>
+          <tr>
+            <th style="width:6%">#</th>
+            <th style="width:16%">Tear</th>
+            <th style="width:18%">Comando</th>
+            <th style="width:20%">Payload</th>
+            <th style="width:12%">Status</th>
+            <th style="width:18%">Criado em</th>
+            <th style="width:10%">Ação</th>
+          </tr>
+        </thead>
+        <tbody id="comandos-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- FORM TEAR -->
+<div class="card-pdm" id="tear-form-card" style="display:none; margin-top:1rem;">
+  <div class="card-pdm-header">
+    <div>
+      <h2 class="card-pdm-title" id="tear-form-title">Cadastro de Tear</h2>
+    </div>
+    <button class="btn-pdm btn-pdm-outline btn-pdm-sm" onclick="closeTearForm()">× Fechar</button>
+  </div>
+  <div class="card-pdm-content">
+    <form id="tear-form" onsubmit="saveTear(event)">
+      <input type="hidden" id="tear-id">
+      <div class="form-row">
+        <div class="field" style="flex:1 1 180px">
+          <label>Nome do Tear</label>
+          <input type="text" id="tear-nome" class="input-pdm" placeholder="Ex: 00001">
+        </div>
+        <div class="field" style="flex:1 1 140px">
+          <label>Tipo</label>
+          <select id="tear-tipo" class="select-pdm">
+            <option value="JAT">JAT710</option>
+            <option value="LWT">LWT710</option>
+          </select>
+        </div>
+        <div class="field" style="flex:1 1 160px">
+          <label>IP</label>
+          <input type="text" id="tear-ip" class="input-pdm" placeholder="Ex: 10.0.0.11">
+        </div>
+        <div class="field" style="flex:1 1 180px">
+          <label>Grupo</label>
+          <select id="tear-grupo" class="select-pdm">
+            <option value="">-- Sem grupo --</option>
+          </select>
+        </div>
+        <div class="field" style="flex:1 1 140px">
+          <label>Tear Duplo</label>
+          <select id="tear-duplo" class="select-pdm">
+            <option value="false">Não</option>
+            <option value="true">Sim</option>
+          </select>
+        </div>
+        <div class="field" style="flex:0 0 auto; align-self:flex-end; display:flex; align-items:center; gap:0.5rem">
+          <label style="margin:0; font-size:0.875rem; font-weight:500; color:hsl(var(--foreground))">
+            <input type="checkbox" id="tear-ativo" checked> Ativo
+          </label>
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:1rem">
+        <button type="submit" class="btn-pdm btn-pdm-outline">Salvar Tear</button>
+        <button type="button" class="btn-pdm btn-pdm-outline" onclick="closeTearForm()">Cancelar</button>
+        <button type="button" id="btn-del-tear" class="btn-pdm btn-pdm-destructive btn-pdm-sm" onclick="deleteTear()" style="margin-left:auto;display:none;">Excluir Tear</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL ENVIAR COMANDO -->
+<div class="modal" id="cmd-modal" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;justify-content:center;align-items:center;z-index:100">
+  <div class="card-pdm" style="width:500px;max-width:90vw;">
+    <div class="card-pdm-header">
+      <h2 class="card-pdm-title" id="cmd-modal-title">Enviar Comando</h2>
+      <button type="button" class="btn-pdm btn-pdm-outline btn-pdm-sm" onclick="closeCmdModal()" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="card-pdm-content">
+      <form id="cmd-form" onsubmit="sendCommand(event)">
+        <input type="hidden" id="cmd-machine-id">
+        <div class="field" style="margin-bottom:0.75rem">
+          <label>Tipo de Comando</label>
+          <select id="cmd-tipo" class="select-pdm">
+            <option value="set_style">Definir Estilo/Artigo</option>
+            <option value="set_shift">Definir Turno</option>
+            <option value="reset_counter">Reiniciar Contador</option>
+            <option value="set_clock">Ajustar Relógio</option>
+            <option value="set_speed">Ajustar Velocidade</option>
+            <option value="set_tension">Ajustar Tensão</option>
+            <option value="set_article">Definir Artigo</option>
+            <option value="clear_error">Limpar Erro</option>
+            <option value="start_production">Iniciar Produção</option>
+            <option value="stop_production">Parar Produção</option>
+            <option value="custom">Comando Personalizado</option>
+          </select>
+        </div>
+        <div class="field" style="margin-bottom:0.75rem">
+          <label>Payload (JSON ou texto)</label>
+          <textarea id="cmd-payload" class="input-pdm" rows="4" placeholder='Ex: {"style": "AA100"}'></textarea>
+        </div>
+        <div class="form-row">
+          <button type="submit" class="btn-pdm btn-pdm-outline">Enviar</button>
+          <button type="button" class="btn-pdm btn-pdm-outline" onclick="closeCmdModal()">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  let teares = [];
+  let comandos = [];
+  let grupos = [];
+  let currentTearId = null;
+  let cmdMachineId = null;
+
+  function showMsg(text, type='ok') {
+    const el = document.getElementById('msg');
+    el.innerHTML = `<span class="badge-pdm badge-pdm-${type === 'err' ? 'danger' : 'success'}">${esc(text)}</span>`;
+    setTimeout(() => { el.innerHTML = ''; }, 5000);
+  }
+
+  async function api(path, method='GET', body=null) {
+    const opts = { method, headers: {} };
+    if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    const res = await fetch('/api/teares' + path, opts);
+    if (res.status === 401) { window.location.href = '/login'; return null; }
+    return await res.json();
+  }
+
+  async function apiCadastros(path, method='GET', body=null) {
+    const opts = { method, headers: {} };
+    if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    const res = await fetch('/api/cadastros' + path, opts);
+    if (res.status === 401) { window.location.href = '/login'; return null; }
+    return await res.json();
+  }
+
+  async function loadAll() {
+    [teares, grupos] = await Promise.all([
+      api(''),
+      apiCadastros('/grupos?active_only=false')
+    ]);
+    comandos = await api('/comandos') || [];
+    renderTeares();
+    renderComandos();
+    carregarSelects();
+  }
+
+  function carregarSelects() {
+    const selGrupo = document.getElementById('tear-grupo');
+    selGrupo.innerHTML = '<option value="">-- Sem grupo --</option>';
+    grupos.forEach(g => {
+      selGrupo.innerHTML += `<option value="${g.id}">${g.name}</option>`;
+    });
+
+    const selFiltro = document.getElementById('filtro-grupo');
+    selFiltro.innerHTML = '<option value="">Todos os grupos</option>';
+    grupos.forEach(g => {
+      selFiltro.innerHTML += `<option value="${g.id}">${g.name}</option>`;
+    });
+  }
+
+  function renderTeares() {
+    const body = document.getElementById('teares-body');
+    body.innerHTML = '';
+    if (!teares || teares.length === 0) {
+      body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:hsl(var(--muted-foreground));font-style:italic;padding:20px">Nenhum tear cadastrado.</td></tr>';
+      return;
+    }
+    teares.forEach(t => {
+      const activeChip = t.active ? '<span class="badge-pdm badge-pdm-success">Ativo</span>' : '<span class="badge-pdm badge-pdm-outline">Inativo</span>';
+      const duplo = t.is_double ? ' (duplo)' : '';
+      body.innerHTML += `
+        <tr>
+          <td>${t.id}</td>
+          <td><b>${t.mac_name}</b>${duplo}</td>
+          <td>${t.mac_type}</td>
+          <td>${t.ip_addr || '–'}</td>
+          <td>${t.group_name || '–'}</td>
+          <td>${activeChip}</td>
+          <td>
+            <button class="btn-pdm btn-pdm-outline btn-pdm-sm" onclick="editarTear(${t.id})">Editar</button>
+            <button class="btn-pdm btn-pdm-outline btn-pdm-sm" onclick="abrirCmdModal(${t.id})">Enviar Comando</button>
+            <button class="btn-pdm btn-pdm-${t.active ? 'outline' : 'success'} btn-pdm-sm" onclick="toggleTear(${t.id}, ${t.active})">${t.active ? 'Desligar' : 'Ligar'}</button>
+            <button class="btn-pdm btn-pdm-destructive btn-pdm-sm" onclick="excluirTear(${t.id})">Excluir</button>
+          </td>
+        </tr>
+      `;
+    });
+  }
+
+  function renderComandos() {
+    const body = document.getElementById('comandos-body');
+    body.innerHTML = '';
+    if (!comandos || comandos.length === 0) {
+      body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:hsl(var(--muted-foreground));font-style:italic;padding:20px">Nenhum comando enviado.</td></tr>';
+      return;
+    }
+    comandos.forEach(c => {
+      const statusChip = `<span class="badge-pdm badge-pdm-${c.status === 'success' ? 'success' : c.status === 'failed' ? 'danger' : 'warning'}">${c.status}</span>`;
+      body.innerHTML += `
+        <tr>
+          <td>${c.id}</td>
+          <td><b>${c.mac_name}</b></td>
+          <td><span style="text-transform:uppercase;font-size:11px;font-weight:600;letter-spacing:.5px">${c.command_type}</span></td>
+          <td>${c.payload || '–'}</td>
+          <td>${statusChip}</td>
+          <td>${c.created_at ? c.created_at.substring(0,16) : '–'}</td>
+          <td><button class="btn-pdm btn-pdm-outline btn-pdm-sm" onclick="verDetalheCmd(${c.id})">Ver</button></td>
+        </tr>
+      `;
+    });
+  }
+
+  function filtrarPorGrupo() {
+    const gid = document.getElementById('filtro-grupo').value;
+    if (!gid) {
+      api('').then(data => { teares = data; renderTeares(); });
+      return;
+    }
+    api('?grupo_id=' + gid).then(data => { teares = data; renderTeares(); });
+  }
+
+  function openTearForm() {
+    currentTearId = null;
+    document.getElementById('tear-form').reset();
+    document.getElementById('tear-id').value = '';
+    document.getElementById('tear-form-title').textContent = 'Novo Tear';
+    document.getElementById('btn-del-tear').style.display = 'none';
+    document.getElementById('tear-ativo').checked = true;
+    document.getElementById('tear-duplo').value = 'false';
+    document.getElementById('tear-form-card').style.display = 'block';
+  }
+
+  function closeTearForm() {
+    currentTearId = null;
+    document.getElementById('tear-form-card').style.display = 'none';
+  }
+
+  async function editarTear(id) {
+    const t = teares.find(x => x.id === id);
+    if (!t) return;
+    currentTearId = id;
+    document.getElementById('tear-id').value = t.id;
+    document.getElementById('tear-nome').value = t.mac_name;
+    document.getElementById('tear-tipo').value = t.mac_type;
+    document.getElementById('tear-ip').value = t.ip_addr || '';
+    document.getElementById('tear-grupo').value = t.group_id || '';
+    document.getElementById('tear-duplo').value = t.is_double ? 'true' : 'false';
+    document.getElementById('tear-ativo').checked = t.active;
+    document.getElementById('tear-form-title').textContent = 'Editar Tear';
+    document.getElementById('btn-del-tear').style.display = 'inline-block';
+    document.getElementById('tear-form-card').style.display = 'block';
+  }
+
+  async function saveTear(ev) {
+    ev.preventDefault();
+    const payload = {
+      mac_name: document.getElementById('tear-nome').value,
+      mac_type: document.getElementById('tear-tipo').value,
+      ip_addr: document.getElementById('tear-ip').value,
+      active: document.getElementById('tear-ativo').checked,
+      is_double: document.getElementById('tear-duplo').value === 'true',
+    };
+    if (!payload.mac_name) { showMsg('Nome é obrigatório', 'err'); return; }
+    const url = currentTearId ? '/' + currentTearId : '';
+    const method = currentTearId ? 'PUT' : 'POST';
+    const res = await api(url, method, payload);
+    if (!res) return;
+    showMsg(currentTearId ? 'Tear atualizado' : 'Tear criado');
+    closeTearForm();
+    await loadAll();
+  }
+
+  async function toggleTear(id, active) {
+    await api('/' + id, 'PUT', { active: !active });
+    await loadAll();
+  }
+
+  async function excluirTear(id) {
+    if (!confirm('Excluir este tear?')) return;
+    await api('/' + id, 'DELETE');
+    showMsg('Tear excluído');
+    await loadAll();
+  }
+
+  async function deleteTear() {
+    if (!currentTearId) return;
+    await excluirTear(currentTearId);
+    closeTearForm();
+  }
+
+  // --- Comando ---
+  function abrirCmdModal(machineId) {
+    cmdMachineId = machineId;
+    const t = teares.find(x => x.id === machineId);
+    document.getElementById('cmd-modal-title').textContent = 'Enviar Comando - ' + (t ? t.mac_name : '');
+    document.getElementById('cmd-machine-id').value = machineId;
+    document.getElementById('cmd-form').reset();
+    document.getElementById('cmd-modal').style.display = 'flex';
+  }
+
+  function closeCmdModal() {
+    document.getElementById('cmd-modal').style.display = 'none';
+    cmdMachineId = null;
+  }
+
+  async function sendCommand(ev) {
+    ev.preventDefault();
+    const payload = {
+      command_type: document.getElementById('cmd-tipo').value,
+      payload: document.getElementById('cmd-payload').value || null,
+    };
+    const res = await api('/' + cmdMachineId + '/comandos', 'POST', payload);
+    if (!res) return;
+    showMsg('Comando enviado para fila');
+    closeCmdModal();
+    await loadAll();
+  }
+
+  async function verDetalheCmd(id) {
+    const c = comandos.find(x => x.id === id);
+    if (!c) return;
+    alert('Comando #' + c.id + '\nTear: ' + c.mac_name + '\nTipo: ' + c.command_type + '\nStatus: ' + c.status + '\nPayload: ' + (c.payload || '–') + '\nCriado em: ' + c.created_at);
+  }
+
+  // Fechar modal clicando fora
+  document.getElementById('cmd-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeCmdModal();
+  });
+
+  loadAll();
+</script>
+{% endblock %}

@@ -5,11 +5,12 @@
   <p class="page-sub">Eficiência por loom/operador — <code>/api/screens/efficiency</code></p>
 </div>
 
-<div class="card">
-  <div class="card-head">
-    <h2 class="card-title">Filtros</h2>
+<div class="card-pdm">
+  <div class="card-pdm-header">
+    <h2 class="card-pdm-title">Filtros</h2>
   </div>
-  <form id="f" class="form-row">
+  <div class="card-pdm-content">
+    <form id="f" class="form-row">
     <div class="field">
       <label for="period">Período</label>
       <select id="period" name="period">
@@ -53,20 +54,21 @@
     <div class="field">
       <label>&nbsp;</label>
       <div class="row">
-        <button class="btn btn-primary" type="submit">Buscar</button>
-        <button class="btn" type="button" id="csv">CSV</button>
+        <button class="btn-pdm btn-pdm-default" type="submit">Buscar</button>
+        <button class="btn-pdm btn-pdm-outline" type="button" id="csv">CSV</button>
       </div>
     </div>
   </form>
-</div>
-
-<div class="card">
-  <div class="card-head">
-    <h2 class="card-title">Resultados</h2>
-    <div class="status-line" id="st" style="margin:0"></div>
+    </div>
   </div>
-  <div class="table-wrap">
-    <table id="t">
+
+  <div class="card-pdm">
+    <div class="card-pdm-header">
+      <h2 class="card-pdm-title">Resultados</h2>
+      <div class="status-line" id="st" style="margin:0"></div>
+    </div>
+    <div class="table-wrap">
+      <table id="t" class="table-pdm">
       <thead>
         <tr>
           <th>Date</th><th>Loom/Op</th><th>Style</th>

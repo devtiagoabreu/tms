@@ -1,0 +1,475 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <h1 class="page-title">Cadastros</h1>
+  <p class="page-sub">Cadastre e mantenha grupos de teares, operadores e a vinculação de máquinas.</p>
+</div>
+
+<div class="row" style="margin-bottom:1rem;gap:0.5rem;">
+  <a href="/turnos" class="btn-pdm btn-pdm-outline btn-pdm-sm" style="text-decoration:none;">← Turnos</a>
+  <a href="/monitor" class="btn-pdm btn-pdm-outline btn-pdm-sm" style="text-decoration:none;">Monitor</a>
+</div>
+
+<div id="msg" style="margin-bottom:1rem;"></div>
+
+<div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(420px, 1fr));align-items:start;">
+  <!-- GRUPOS -->
+  <div class="card-pdm">
+    <div class="card-pdm-header">
+      <h2 class="card-pdm-title">Grupos de Teares</h2>
+      <button class="btn-pdm btn-pdm-default btn-pdm-sm" onclick="openGrupoForm()">+ Novo Grupo</button>
+    </div>
+    <div class="card-pdm-content">
+      <table class="table-pdm">
+        <thead>
+          <tr>
+            <th style="width:6%">#</th>
+            <th style="width:20%">Grupo</th>
+            <th style="width:30%">Descrição</th>
+            <th style="width:16%">Turno Vinculado</th>
+            <th style="width:10%">Ativo</th>
+            <th style="width:18%">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="grupos-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- OPERADORES -->
+  <div class="card-pdm">
+    <div class="card-pdm-header">
+      <h2 class="card-pdm-title">Operadores (Tecelões / Contra-mestres)</h2>
+      <button class="btn-pdm btn-pdm-default btn-pdm-sm" onclick="openOperadorForm()">+ Novo Operador</button>
+    </div>
+    <div class="card-pdm-content">
+      <table class="table-pdm">
+        <thead>
+          <tr>
+            <th style="width:12%">Código</th>
+            <th style="width:22%">Nome</th>
+            <th style="width:14%">Cargo</th>
+            <th style="width:20%">Grupo</th>
+            <th style="width:12%">Turno Dia</th>
+            <th style="width:10%">Ativo</th>
+            <th style="width:18%">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="operadores-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- FORM GRUPO -->
+  <div class="card-pdm" id="grupo-form-card" style="display:none;grid-column:1 / -1;">
+    <div class="card-pdm-header">
+      <h2 class="card-pdm-title" id="grupo-form-title">Cadastro de Grupo</h2>
+      <button class="btn-pdm btn-pdm-outline btn-pdm-sm" onclick="closeGrupoForm()">× Fechar</button>
+    </div>
+    <div class="card-pdm-content">
+      <form id="grupo-form" onsubmit="saveGrupo(event)">
+        <input type="hidden" id="grupo-id">
+        <div class="form-row">
+          <div class="field" style="flex:1 1 100%;">
+            <label>Nome do Grupo</label>
+            <input type="text" id="grupo-nome" class="input-pdm" placeholder="Ex: Setor A, LWT, JAT">
+          </div>
+          <div class="field" style="flex:1 1 100%;">
+            <label>Descrição</label>
+            <input type="text" id="grupo-descricao" class="input-pdm" placeholder="Descrição do setor">
+          </div>
+          <div class="field" style="flex:1 1 220px;">
+            <label>Turno Vinculado</label>
+            <select id="grupo-turno" class="select-pdm">
+              <option value="">-- Selecionar turno --</option>
+            </select>
+          </div>
+          <div class="field" style="flex:0 0 auto;align-self:end;">
+            <label style="margin:0;font-size:0.875rem;font-weight:500;color:hsl(var(--foreground))">
+              <input type="checkbox" id="grupo-ativo" checked> Ativo
+            </label>
+          </div>
+        </div>
+        <div class="form-row" style="margin-top:1rem;">
+          <button type="submit" class="btn-pdm btn-pdm-outline">Salvar Grupo</button>
+          <button type="button" class="btn-pdm btn-pdm-outline" onclick="closeGrupoForm()">Cancelar</button>
+          <button type="button" id="btn-del-grupo" class="btn-pdm btn-pdm-destructive btn-pdm-sm" onclick="deleteGrupo()" style="margin-left:auto;display:none;">Excluir Grupo</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- FORM OPERADOR -->
+  <div class="card-pdm" id="operador-form-card" style="display:none;grid-column:1 / -1;">
+    <div class="card-pdm-header">
+      <h2 class="card-pdm-title" id="operador-form-title">Cadastro de Operador</h2>
+      <button class="btn-pdm btn-pdm-outline btn-pdm-sm" onclick="closeOperadorForm()">× Fechar</button>
+    </div>
+    <div class="card-pdm-content">
+      <form id="operador-form" onsubmit="saveOperador(event)">
+        <input type="hidden" id="operador-id">
+        <div class="form-row">
+          <div class="field" style="flex:1 1 140px;">
+            <label>Código</label>
+            <input type="text" id="operador-codigo" class="input-pdm" placeholder="Ex: 001">
+          </div>
+          <div class="field" style="flex:1 1 220px;">
+            <label>Nome</label>
+            <input type="text" id="operador-nome" class="input-pdm" placeholder="Nome completo">
+          </div>
+          <div class="field" style="flex:1 1 180px;">
+            <label>Cargo</label>
+            <select id="operador-role" class="select-pdm">
+              <option value="tecelao">Tecelão</option>
+              <option value="contra_mestre">Contra-mestre</option>
+              <option value="supervisor">Supervisor</option>
+            </select>
+          </div>
+          <div class="field" style="flex:1 1 180px;">
+            <label>Grupo Vinculado</label>
+            <select id="operador-grupo" class="select-pdm">
+              <option value="">-- Sem grupo --</option>
+            </select>
+          </div>
+          <div class="field" style="flex:1 1 140px;">
+            <label>Turno (dia)</label>
+            <input type="text" id="operador-turno-dia" class="input-pdm" placeholder="Ex: A">
+          </div>
+          <div class="field" style="flex:0 0 auto;align-self:end;">
+            <label style="margin:0;font-size:0.875rem;font-weight:500;color:hsl(var(--foreground))">
+              <input type="checkbox" id="operador-ativo" checked> Ativo
+            </label>
+          </div>
+        </div>
+        <div class="form-row" style="margin-top:1rem;">
+          <button type="submit" class="btn-pdm btn-pdm-outline">Salvar Operador</button>
+          <button type="button" class="btn-pdm btn-pdm-outline" onclick="closeOperadorForm()">Cancelar</button>
+          <button type="button" id="btn-del-operador" class="btn-pdm btn-pdm-destructive btn-pdm-sm" onclick="deleteOperador()" style="margin-left:auto;display:none;">Excluir Operador</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MEMBROS DO GRUPO (modal simples via separação) -->
+  <div class="card-pdm" id="membros-card" style="display:none;grid-column:1 / -1;">
+    <div class="card-pdm-header">
+      <h2 class="card-pdm-title" id="membros-title">Membros do Grupo</h2>
+      <button class="btn-pdm btn-pdm-outline btn-pdm-sm" onclick="closeMembros()">× Fechar</button>
+    </div>
+    <div class="card-pdm-content">
+      <div class="form-row" style="margin-bottom:12px;">
+        <select id="membro-machine" class="select-pdm"></select>
+        <button class="btn-pdm btn-pdm-default btn-pdm-sm" onclick="addMembro()">Adicionar Tear</button>
+      </div>
+      <table class="table-pdm">
+        <thead>
+          <tr>
+            <th>Tear</th>
+            <th>Tipo</th>
+            <th>IP</th>
+            <th>Ativo</th>
+            <th>Ação</th>
+          </tr>
+        </thead>
+        <tbody id="membros-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  let currentGrupoId = null;
+  let currentOperadorId = null;
+  let grupos = [];
+  let operadores = [];
+  let turnos = [];
+  let maquinas = [];
+
+  function showMsg(text, type='ok') {
+    const el = document.getElementById('msg');
+    el.innerHTML = `<span class="badge-pdm badge-pdm-${type === 'err' ? 'danger' : 'success'}">${esc(text)}</span>`;
+    setTimeout(() => { el.innerHTML = ''; }, 5000);
+  }
+
+  async function api(path, method='GET', body=null) {
+    const opts = { method, headers: {} };
+    if (body) opts.headers['Content-Type'] = 'application/json';
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch('/api/cadastros' + path, opts);
+    if (res.status === 401) { window.location.href = '/login'; return null; }
+    return await res.json();
+  }
+
+  async function loadAll() {
+    [grupos, operadores, turnos, maquinas] = await Promise.all([
+      api('/grupos?active_only=false'),
+      api('/operadores?active_only=false'),
+      api('/turnos-disponiveis'),
+      api('/maquinas')  // placeholder, será preenchido abaixo
+    ]);
+    // Carregar máquinas via endpoint de máquinas (se existir) ou vazio
+    try {
+      maquinas = await api('/maquinas') || [];
+    } catch(e) { maquinas = []; }
+
+    renderGrupos();
+    renderOperadores();
+    carregarSelects();
+  }
+
+  function renderGrupos() {
+    const body = document.getElementById('grupos-body');
+    body.innerHTML = '';
+    if (!grupos || grupos.length === 0) {
+      body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--muted-foreground));font-style:italic;padding:20px">Nenhum grupo cadastrado.</td></tr>';
+      return;
+    }
+    grupos.forEach(g => {
+      const activeChip = g.active ? '<span class="badge-pdm badge-pdm-success">Ativo</span>' : '<span class="badge-pdm badge-pdm-outline">Inativo</span>';
+      const turnoNome = g.shift_turn_name || '–';
+      body.innerHTML += `
+        <tr>
+          <td>${g.id}</td>
+          <td><b>${g.name}</b></td>
+          <td>${g.description || '–'}</td>
+          <td>${turnoNome}</td>
+          <td>${activeChip}</td>
+          <td>
+            <button class="btn-pdm btn-pdm-outline btn-pdm-sm" onclick="editarGrupo(${g.id})">Editar</button>
+            <button class="btn-pdm btn-pdm-outline btn-pdm-sm" onclick="verMembros(${g.id})">Membros</button>
+            <button class="btn-pdm btn-pdm-${g.active ? 'outline' : 'success'} btn-pdm-sm" onclick="toggleGrupo(${g.id}, ${g.active})">${g.active ? 'Desligar' : 'Ligar'}</button>
+            <button class="btn-pdm btn-pdm-destructive btn-pdm-sm" onclick="excluirGrupo(${g.id})">Excluir</button>
+          </td>
+        </tr>
+      `;
+    });
+  }
+
+  function renderOperadores() {
+    const body = document.getElementById('operadores-body');
+    body.innerHTML = '';
+    if (!operadores || operadores.length === 0) {
+      body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:hsl(var(--muted-foreground));font-style:italic;padding:20px">Nenhum operador cadastrado.</td></tr>';
+      return;
+    }
+    const roleClass = { tecelao: 'badge-pdm-default', contra_mestre: 'badge-pdm-warning', supervisor: 'badge-pdm-destructive' };
+    operadores.forEach(o => {
+      const activeChip = o.active ? '<span class="badge-pdm badge-pdm-success">Ativo</span>' : '<span class="badge-pdm badge-pdm-outline">Inativo</span>';
+      const roleChip = `<span class="badge-pdm ${roleClass[o.role] || 'badge-pdm-default'}">${o.role}</span>`;
+      body.innerHTML += `
+        <tr>
+          <td><b>${o.code}</b></td>
+          <td>${o.name}</td>
+          <td>${roleChip}</td>
+          <td>${o.group_name || '–'}</td>
+          <td>${o.shift_day || '–'}</td>
+          <td>${activeChip}</td>
+          <td>
+            <button class="btn-pdm btn-pdm-outline btn-pdm-sm" onclick="editarOperador(${o.id})">Editar</button>
+            <button class="btn-pdm btn-pdm-${o.active ? 'outline' : 'success'} btn-pdm-sm" onclick="toggleOperador(${o.id}, ${o.active})">${o.active ? 'Desligar' : 'Ligar'}</button>
+            <button class="btn-pdm btn-pdm-destructive btn-pdm-sm" onclick="excluirOperador(${o.id})">Excluir</button>
+          </td>
+        </tr>
+      `;
+    });
+  }
+
+  function carregarSelects() {
+    const selTurno = document.getElementById('grupo-turno');
+    selTurno.innerHTML = '<option value="">-- Selecionar turno --</option>';
+    turnos.forEach(t => {
+      selTurno.innerHTML += `<option value="${t.id}">${t.name} (${t.start_time} - ${t.end_time})${t.active ? '' : ' (inativo)'}</option>`;
+    });
+
+    const selGrupo = document.getElementById('operador-grupo');
+    selGrupo.innerHTML = '<option value="">-- Sem grupo --</option>';
+    grupos.forEach(g => {
+      selGrupo.innerHTML += `<option value="${g.id}">${g.name}</option>`;
+    });
+
+    const selMaquina = document.getElementById('membro-machine');
+    selMaquina.innerHTML = '<option value="">-- Selecionar tear --</option>';
+    maquinas.forEach(m => {
+      selMaquina.innerHTML += `<option value="${m.id}">${m.mac_name} (${m.ip_addr || 'sem IP'})</option>`;
+    });
+  }
+
+  // --- Grupo CRUD ---
+  function openGrupoForm() {
+    currentGrupoId = null;
+    document.getElementById('grupo-form').reset();
+    document.getElementById('grupo-id').value = '';
+    document.getElementById('grupo-form-title').textContent = 'Novo Grupo';
+    document.getElementById('btn-del-grupo').style.display = 'none';
+    document.getElementById('grupo-form-card').style.display = 'block';
+  }
+
+  function closeGrupoForm() {
+    currentGrupoId = null;
+    document.getElementById('grupo-form-card').style.display = 'none';
+  }
+
+  async function editarGrupo(id) {
+    const g = grupos.find(x => x.id === id);
+    if (!g) return;
+    currentGrupoId = id;
+    document.getElementById('grupo-id').value = g.id;
+    document.getElementById('grupo-nome').value = g.name;
+    document.getElementById('grupo-descricao').value = g.description || '';
+    document.getElementById('grupo-turno').value = g.shift_turn_id || '';
+    document.getElementById('grupo-ativo').checked = g.active;
+    document.getElementById('grupo-form-title').textContent = 'Editar Grupo';
+    document.getElementById('btn-del-grupo').style.display = 'inline-block';
+    document.getElementById('grupo-form-card').style.display = 'block';
+  }
+
+  async function saveGrupo(ev) {
+    ev.preventDefault();
+    const payload = {
+      name: document.getElementById('grupo-nome').value,
+      description: document.getElementById('grupo-descricao').value,
+      shift_turn_id: document.getElementById('grupo-turno').value || null,
+      active: document.getElementById('grupo-ativo').checked,
+    };
+    if (!payload.name) { showMsg('Nome é obrigatório', 'err'); return; }
+    const url = currentGrupoId ? '/grupos/' + currentGrupoId : '/grupos';
+    const method = currentGrupoId ? 'PUT' : 'POST';
+    const res = await api(url, method, payload);
+    if (!res) return;
+    showMsg(currentGrupoId ? 'Grupo atualizado' : 'Grupo criado');
+    closeGrupoForm();
+    await loadAll();
+  }
+
+  async function toggleGrupo(id, active) {
+    await api('/grupos/' + id, 'PUT', { active: !active });
+    await loadAll();
+  }
+
+  async function excluirGrupo() {
+    if (!currentGrupoId) return;
+    if (!confirm('Excluir este grupo?')) return;
+    await api('/grupos/' + currentGrupoId, 'DELETE');
+    showMsg('Grupo excluído');
+    closeGrupoForm();
+    await loadAll();
+  }
+
+  async function verMembros(grupoId) {
+    const g = grupos.find(x => x.id === grupoId);
+    if (!g) return;
+    document.getElementById('membros-title').textContent = 'Membros - ' + g.name;
+    currentGrupoId = grupoId;
+    const membros = await api('/grupos/' + grupoId + '/membros');
+    const body = document.getElementById('membros-body');
+    body.innerHTML = '';
+    if (!membros || membros.length === 0) {
+      body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:hsl(var(--muted-foreground));font-style:italic;padding:20px">Nenhum tear vinculado.</td></tr>';
+    } else {
+      membros.forEach(m => {
+        body.innerHTML += `
+          <tr>
+            <td><b>${m.mac_name}</b></td>
+            <td>${m.mac_type || '–'}</td>
+            <td>${m.ip_addr || '–'}</td>
+            <td><span class="badge-pdm badge-pdm-${m.active ? 'success' : 'outline'}">${m.active ? 'Ativo' : 'Inativo'}</span></td>
+            <td><button class="btn-pdm btn-pdm-destructive btn-pdm-sm" onclick="removerMembro(${m.id})">Remover</button></td>
+          </tr>
+        `;
+      });
+    }
+    document.getElementById('membros-card').style.display = 'block';
+  }
+
+  function closeMembros() {
+    document.getElementById('membros-card').style.display = 'none';
+    currentGrupoId = null;
+  }
+
+  async function addMembro() {
+    if (!currentGrupoId) return;
+    const sel = document.getElementById('membro-machine');
+    const machineId = sel.value;
+    if (!machineId) { showMsg('Selecione um tear', 'err'); return; }
+    await api('/grupos/' + currentGrupoId + '/membros', 'POST', { machine_id: parseInt(machineId) });
+    await verMembros(currentGrupoId);
+  }
+
+  async function removerMembro(membroId) {
+    if (!currentGrupoId) return;
+    await api('/grupos/' + currentGrupoId + '/membros/' + membroId, 'DELETE');
+    await verMembros(currentGrupoId);
+  }
+
+  // --- Operador CRUD ---
+  function openOperadorForm() {
+    currentOperadorId = null;
+    document.getElementById('operador-form').reset();
+    document.getElementById('operador-id').value = '';
+    document.getElementById('operador-form-title').textContent = 'Novo Operador';
+    document.getElementById('btn-del-operador').style.display = 'none';
+    document.getElementById('operador-form-card').style.display = 'block';
+  }
+
+  function closeOperadorForm() {
+    currentOperadorId = null;
+    document.getElementById('operador-form-card').style.display = 'none';
+  }
+
+  async function editarOperador(id) {
+    const o = operadores.find(x => x.id === id);
+    if (!o) return;
+    currentOperadorId = id;
+    document.getElementById('operador-id').value = o.id;
+    document.getElementById('operador-codigo').value = o.code;
+    document.getElementById('operador-nome').value = o.name;
+    document.getElementById('operador-role').value = o.role;
+    document.getElementById('operador-grupo').value = o.group_id || '';
+    document.getElementById('operador-turno-dia').value = o.shift_day || '';
+    document.getElementById('operador-ativo').checked = o.active;
+    document.getElementById('operador-form-title').textContent = 'Editar Operador';
+    document.getElementById('btn-del-operador').style.display = 'inline-block';
+    document.getElementById('operador-form-card').style.display = 'block';
+  }
+
+  async function saveOperador(ev) {
+    ev.preventDefault();
+    const payload = {
+      code: document.getElementById('operador-codigo').value,
+      name: document.getElementById('operador-nome').value,
+      role: document.getElementById('operador-role').value,
+      group_id: document.getElementById('operador-grupo').value || null,
+      shift_day: document.getElementById('operador-turno-dia').value || null,
+      active: document.getElementById('operador-ativo').checked,
+    };
+    if (!payload.code || !payload.name) { showMsg('Código e nome são obrigatórios', 'err'); return; }
+    const url = currentOperadorId ? '/operadores/' + currentOperadorId : '/operadores';
+    const method = currentOperadorId ? 'PUT' : 'POST';
+    const res = await api(url, method, payload);
+    if (!res) return;
+    showMsg(currentOperadorId ? 'Operador atualizado' : 'Operador criado');
+    closeOperadorForm();
+    await loadAll();
+  }
+
+  async function toggleOperador(id, active) {
+    await api('/operadores/' + id, 'PUT', { active: !active });
+    await loadAll();
+  }
+
+  async function excluirOperador() {
+    if (!currentOperadorId) return;
+    if (!confirm('Excluir este operador?')) return;
+    await api('/operadores/' + currentOperadorId, 'DELETE');
+    showMsg('Operador excluído');
+    closeOperadorForm();
+    await loadAll();
+  }
+
+  loadAll();
+</script>
+{% endblock %}

@@ -69,7 +69,9 @@ def day_stops(loom: LoomFile, day: date, mac_type: str = "JAT") -> Optional[DayS
     pode usar o estado atual do tear.
     """
     day_indexes = {
-        index for index, start in loom.day_start.items() if start.date() == day
+        index
+        for index, start in loom.day_start.items()
+        if start is not None and start.date() == day
     }
     if not day_indexes:
         return None

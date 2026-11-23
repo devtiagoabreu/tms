@@ -5,11 +5,12 @@
   <p class="page-sub">Consultas por dia, semana e mês — <code>/api/reports/{period}</code></p>
 </div>
 
-<div class="card">
-  <div class="card-head">
-    <h2 class="card-title">Filtros</h2>
+<div class="card-pdm">
+  <div class="card-pdm-header">
+    <h2 class="card-pdm-title">Filtros</h2>
   </div>
-  <form id="reportForm" class="form-row">
+  <div class="card-pdm-content">
+    <form id="reportForm" class="form-row">
     <div class="field">
       <label for="period">Período</label>
       <select id="period" name="period">
@@ -52,24 +53,25 @@
     <div class="field">
       <label>&nbsp;</label>
       <div class="row">
-        <button class="btn btn-primary" type="submit">Buscar</button>
-        <button class="btn" type="button" id="csvBtn">CSV</button>
+        <button class="btn-pdm btn-pdm-default" type="submit">Buscar</button>
+        <button class="btn-pdm btn-pdm-outline" type="button" id="csvBtn">CSV</button>
       </div>
     </div>
   </form>
+  </div>
 </div>
 
-<div class="card">
-  <div class="card-head">
+<div class="card-pdm">
+  <div class="card-pdm-header">
     <div>
-      <h2 class="card-title">Resultados</h2>
-      <p class="muted" style="margin:4px 0 0;font-size:0.8125rem">Dados filtrados por período</p>
+      <h2 class="card-pdm-title">Resultados</h2>
+      <p class="card-pdm-description" style="margin:4px 0 0;font-size:0.8125rem">Dados filtrados por período</p>
     </div>
     <div class="status-line" id="status" style="margin:0"></div>
   </div>
-  <div class="card-body">
+  <div class="card-pdm-content">
     <div class="table-wrap">
-      <table id="table">
+      <table id="table" class="table-pdm">
         <thead>
           <tr>
             <th>Período</th><th>Key</th><th>MAC</th><th>Tipo</th><th>Artigo</th>

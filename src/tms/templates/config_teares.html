@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <h1 class="page-title">Configurar Teares Duplos</h1>
+  <p class="page-sub">Teares duplos produzem 2 rolos de tecido de uma vez. Metros e pontos são multiplicados por 2.</p>
+</div>
+
+<div class="card-pdm">
+  <div class="card-pdm-header">
+    <h2 class="card-pdm-title">Teares cadastrados</h2>
+    <p class="card-pdm-description" style="margin:4px 0 0;font-size:0.8125rem">Marque "Duplo" para teares que produzem 2 rolos simultaneamente.</p>
+  </div>
+  <div class="card-pdm-content">
+    <div class="table-wrap">
+      <table class="table-pdm" id="table">
+        <thead>
+          <tr>
+            <th style="width:26%">Tear</th>
+            <th class="text-right" style="width:16%">Tipo</th>
+            <th class="text-right" style="width:20%">IP</th>
+            <th class="text-center" style="width:14%">Ativo</th>
+            <th class="text-center" style="width:18%">Duplo</th>
+            <th style="width:16%">Ação</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in machines %}
+          <tr>
+            <td>{{ m.mac_name }}</td>
+            <td class="text-right">{{ m.mac_type }}</td>
+            <td class="text-right">{{ m.ip_addr or '—' }}</td>
+            <td class="text-center">
+              <span class="badge-pdm {{ 'badge-pdm-success' if m.active else 'badge-pdm-danger' }}">
+                {{ 'Sim' if m.active else 'Não' }}
+              </span>
+            </td>
+            <td class="text-center">
+              <span class="badge-pdm {{ 'badge-pdm-success' if m.is_double else 'badge-pdm-outline' }}">
+                {{ 'Sim' if m.is_double else 'Não' }}
+              </span>
+            </td>
+            <td>
+              <button class="btn-pdm btn-pdm-sm btn-pdm-default toggle-double"
+                      data-id="{{ m.id }}"
+                      data-current="{{ '1' if m.is_double else '0' }}"
+                      data-name="{{ m.mac_name }}">
+                {{ 'Desmarcar duplo' if m.is_double else 'Marcar duplo' }}
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  const buttons = document.querySelectorAll('.toggle-double');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const current = btn.dataset.current === '1';
+      const name = btn.dataset.name;
+      const novo = !current;
+
+      try {
+        const res = await fetch(`/api/admin/machines/${id}/double`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_double: novo }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          btn.dataset.current = data.is_double ? '1' : '0';
+          btn.textContent = data.is_double ? 'Desmarcar duplo' : 'Marcar duplo';
+          const badge = btn.closest('td').previousElementSibling.querySelector('.badge-pdm');
+          badge.textContent = data.is_double ? 'Sim' : 'Não';
+          badge.className = data.is_double ? 'badge-pdm badge-pdm-success' : 'badge-pdm badge-pdm-outline';
+          alert(`Tear ${data.mac_name} agora ${data.is_double ? 'duplo' : 'normal'}.`);
+        } else {
+          alert('Erro ao atualizar tear.');
+        }
+      } catch (e) {
+        alert('Erro de conexão.');
+      }
+    });
+  });
+</script>
+{% endblock %}

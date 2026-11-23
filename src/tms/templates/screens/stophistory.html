@@ -5,11 +5,12 @@
   <p class="page-sub">Histórico de paradas por intervalo — <code>/api/screens/stophistory</code></p>
 </div>
 
-<div class="card">
-  <div class="card-head">
-    <h2 class="card-title">Filtros</h2>
+<div class="card-pdm">
+  <div class="card-pdm-header">
+    <h2 class="card-pdm-title">Filtros</h2>
   </div>
-  <form id="f" class="form-row">
+  <div class="card-pdm-content">
+    <form id="f" class="form-row">
     <div class="field">
       <label for="day_from">De</label>
       <input id="day_from" name="day_from" placeholder="2025.10.01">
@@ -25,20 +26,23 @@
     <div class="field">
       <label>&nbsp;</label>
       <div class="row">
-        <button class="btn btn-primary" type="submit">Buscar</button>
-        <button class="btn" type="button" id="csv">CSV</button>
+        <button class="btn-pdm btn-pdm-default" type="submit">Buscar</button>
+        <button class="btn-pdm btn-pdm-outline" type="button" id="csv">CSV</button>
       </div>
     </div>
   </form>
-</div>
-
-<div class="card">
-  <div class="card-head">
-    <h2 class="card-title">Resposta</h2>
-    <div class="status-line" id="st" style="margin:0"></div>
+    </div>
   </div>
-  <pre id="out">Execute uma busca para ver o resultado.</pre>
-</div>
+
+  <div class="card-pdm">
+    <div class="card-pdm-header">
+      <h2 class="card-pdm-title">Resposta</h2>
+      <div class="status-line" id="st" style="margin:0"></div>
+    </div>
+    <div class="card-pdm-content">
+      <pre id="out">Execute uma busca para ver o resultado.</pre>
+    </div>
+  </div>
 
 <script type="module">
   import { qs, fetchJSON, setStatus } from '/static/js/tms.js';

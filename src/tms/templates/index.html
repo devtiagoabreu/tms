@@ -36,10 +36,10 @@
     </div>
     {% if current_user and current_user.role.value == 'admin' %}
     <div class="row">
-      <button class="btn btn-sm" id="btnRetry" {% if not run or not run.retry_count %}disabled{% endif %}>
+      <button class="btn-pdm btn-pdm-sm" id="btnRetry" {% if not run or not run.retry_count %}disabled{% endif %}>
         Repetir fila{% if run and run.retry_count %} ({{ run.retry_count }}){% endif %}
       </button>
-      <button class="btn btn-sm btn-primary" id="btnCollect">Coletar agora</button>
+      <button class="btn-pdm btn-pdm-sm btn-pdm-default" id="btnCollect">Coletar agora</button>
     </div>
     {% endif %}
   </div>
@@ -156,11 +156,11 @@
   </div>
 </div>
 
-<div class="card monthly-card">
-  <div class="card-head">
+<div class="card-pdm monthly-card">
+  <div class="card-pdm-header">
     <div>
-      <h2 class="card-title">Produção mensal</h2>
-      <p class="muted" style="margin:4px 0 0;font-size:0.8125rem">
+      <h2 class="card-pdm-title">Produção mensal</h2>
+      <p class="card-pdm-description" style="margin:4px 0 0;font-size:0.8125rem">
         Somatória de metros e pontos do mês atual e do mês passado
       </p>
     </div>
@@ -189,11 +189,11 @@
 </div>
 
 <div class="split-grid">
-  <div class="card">
-    <div class="card-head">
+  <div class="card-pdm">
+    <div class="card-pdm-header">
       <div>
-        <h2 class="card-title">Paradas por tipo</h2>
-        <p class="muted" style="margin:4px 0 0;font-size:0.8125rem">Quantidade e minutos acumulados</p>
+        <h2 class="card-pdm-title">Paradas por tipo</h2>
+        <p class="card-pdm-description" style="margin:4px 0 0">Quantidade e minutos acumulados</p>
       </div>
     </div>
     {% if summary.breakdown_known %}
@@ -238,13 +238,13 @@
     {% endif %}
   </div>
 
-  <div class="card">
-    <div class="card-head">
+  <div class="card-pdm">
+    <div class="card-pdm-header">
       <div>
-        <h2 class="card-title">Execução da coleta</h2>
-        <p class="muted" style="margin:4px 0 0;font-size:0.8125rem">Chave primária por dia impede duplicidade</p>
+        <h2 class="card-pdm-title">Execução da coleta</h2>
+        <p class="card-pdm-description" style="margin:4px 0 0">Chave primária por dia impede duplicidade</p>
       </div>
-      <span class="badge badge-{{ status_tone.get(run.status, '') }}">{{ status_labels.get(run.status, run.status) }}</span>
+      <span class="badge-pdm badge-pdm-{{ status_tone.get(run.status, '') }}">{{ status_labels.get(run.status, run.status) }}</span>
     </div>
     <div class="run-meta" style="margin-top:0">
       <span>Data coletada <strong>{{ run.collection_date.strftime('%d/%m/%Y') }}</strong></span>
@@ -261,16 +261,16 @@
 </div>
 
 {% if gap_days or gap_looms %}
-<div class="card">
-  <div class="card-head">
+<div class="card-pdm">
+  <div class="card-pdm-header">
     <div>
-      <h2 class="card-title">Lacunas de coleta</h2>
-      <p class="muted" style="margin:4px 0 0;font-size:0.8125rem">
+      <h2 class="card-pdm-title">Lacunas de coleta</h2>
+      <p class="card-pdm-description" style="margin:4px 0 0">
         Últimos 7 dias &middot; dias sem coleta completa e teares ausentes em 2+ dias
       </p>
     </div>
     {% if current_user and current_user.role.value == 'admin' %}
-    <button class="btn btn-sm" id="btnBackfill" data-start="{{ gaps.start }}" data-end="{{ gaps.end }}">
+    <button class="btn-pdm btn-pdm-sm btn-pdm-outline" id="btnBackfill" data-start="{{ gaps.start }}" data-end="{{ gaps.end }}">
       Preencher lacunas
     </button>
     {% endif %}
@@ -304,18 +304,18 @@
 {% endif %}
 
 {% if missing %}
-<div class="card">
-  <div class="card-head">
+<div class="card-pdm">
+  <div class="card-pdm-header">
     <div>
-      <h2 class="card-title">Fila de retentativa</h2>
-      <p class="muted" style="margin:4px 0 0;font-size:0.8125rem">Teares desligados ou fora da rede</p>
+      <h2 class="card-pdm-title">Fila de retentativa</h2>
+      <p class="card-pdm-description" style="margin:4px 0 0">Teares desligados ou fora da rede</p>
     </div>
     {% if current_user and current_user.role.value == 'admin' %}
-    <button class="btn btn-sm" id="btnRetryInline">Tentar novamente</button>
+    <button class="btn-pdm btn-pdm-sm btn-pdm-outline" id="btnRetryInline">Tentar novamente</button>
     {% endif %}
   </div>
   <div class="table-wrap">
-    <table>
+    <table class="table-pdm">
       <thead>
         <tr>
           <th>Tear</th>
@@ -343,19 +343,19 @@
 </div>
 {% endif %}
 
-<div class="card">
-  <div class="card-head">
+<div class="card-pdm">
+  <div class="card-pdm-header">
     <div>
-      <h2 class="card-title">Dados coletados por tear</h2>
-      <p class="muted" style="margin:4px 0 0;font-size:0.8125rem">
+      <h2 class="card-pdm-title">Dados coletados por tear</h2>
+      <p class="card-pdm-description" style="margin:4px 0 0">
         {{ target_date.strftime('%d/%m/%Y') }} &middot; {{ looms|length }} tear{% if looms|length != 1 %}es{% endif %}
       </p>
     </div>
-    <span class="badge badge-{{ status_tone.get(run.status, '') }}">{{ status_labels.get(run.status, run.status) }}</span>
+    <span class="badge-pdm badge-pdm-{{ status_tone.get(run.status, '') }}">{{ status_labels.get(run.status, run.status) }}</span>
   </div>
   {% if looms %}
   <div class="table-wrap">
-    <table>
+    <table class="table-pdm">
       <thead>
         <tr>
           <th>Tear</th>
@@ -384,7 +384,7 @@
           <td class="text-right">{{ row.trama_stops if row.trama_stops is not none else '—' }}</td>
           <td class="text-right">{{ row.urdume_stops if row.urdume_stops is not none else '—' }}</td>
           <td class="text-right">{{ row.outros_stops if row.outros_stops is not none else '—' }}</td>
-          <td><span class="badge">{{ source_labels.get(row.source, row.source) }}</span></td>
+          <td><span class="badge-pdm badge-pdm-outline">{{ source_labels.get(row.source, row.source) }}</span></td>
         </tr>
         {% endfor %}
       </tbody>

@@ -43,6 +43,7 @@ from tms.ingest.loom_file import parse_loom_file
 from tms.models.daily import DailyCollectionItem, DailyCollectionRun, DailyLoomData
 from tms.models.masters import Machine
 from tms.models.runtime import AggShift, DailyRaw, LiveStatusRecord
+from tms.models.shift_turn import ShiftTurn
 from tms.services import collection_progress
 from tms.services.loom_history import day_production, day_stops
 
@@ -76,7 +77,7 @@ MAX_SAMPLE_MIN = 5.0
 RETRY_INTERVAL = timedelta(minutes=15)
 
 # Hora a partir da qual a coleta automatica do dia anterior pode rodar.
-COLLECTION_HOUR = 1
+COLLECTION_HOUR = 7
 
 
 def get_yesterday() -> date:
@@ -423,6 +424,11 @@ def _resolve_metrics(
                 continue
             if metrics.get(key) is None:
                 metrics[key] = value
+
+    # pontos_reais = (picks * 1000) / 100 = picks * 10
+    if metrics.get("picks") is not None:
+        metrics["pontos_reais"] = round((float(metrics["picks"]) * 1000) / 100, 3)
+
     return metrics
 
 
@@ -440,6 +446,52 @@ def _machines_needing_breakdown(db: Session, day: date) -> set[int]:
             )
         ).scalars()
     )
+
+
+# Mascara de bits para dias da semana: bit0=domingo ... bit6=snado
+DAYS_OF_WEEK = [
+    ("domingo", 1),
+    ("segunda", 2),
+    ("terca", 4),
+    ("quarta", 8),
+    ("quinta", 16),
+    ("sexta", 32),
+    ("snado", 64),
+]
+
+
+def _resolve_shift_turn(
+    db: Session, day: date, collected_at: Optional[datetime] = None
+) -> Optional[int]:
+    """Encontra o turno cadastrado ativo para a data/hora informada.
+
+    Percorre os turnos ativos cuja mascara de dias inclui o dia da semana
+    de `day` e verifica se `collected_at` (ou 00:00 do dia) cai dentro do
+    intervalo [start_time, end_time] do turno, respeitando `wraps_midnight`.
+    Devolve o id do turno ou None.
+    """
+    if collected_at is None:
+        collected_at = datetime.combine(day, time.min)
+    day_name = [
+        "domingo", "segunda", "terca", "quarta", "quinta", "sexta", "snado",
+    ][collected_at.weekday()]
+    day_bit = {name: bit for name, bit in DAYS_OF_WEEK}.get(day_name, 0)
+    hhmm = collected_at.strftime("%H:%M")
+
+    turns = db.execute(
+        select(ShiftTurn).where(ShiftTurn.active.is_(True))
+    ).scalars().all()
+    for t in turns:
+        if not (t.days_mask & day_bit):
+            continue
+        if t.wraps_midnight:
+            # turno atravessa meia-noite: ativo se hhmm >= start OU hhmm <= end
+            if hhmm >= t.start_time or hhmm <= t.end_time:
+                return t.id
+        else:
+            if t.start_time <= hhmm <= t.end_time:
+                return t.id
+    return None
 
 
 def _stored_metrics(db: Session, machine: Machine, day: date) -> Optional[dict]:
@@ -468,7 +520,13 @@ def _stored_metrics(db: Session, machine: Machine, day: date) -> Optional[dict]:
 
 
 def _upsert_loom_data(
-    db: Session, day: date, machine: Machine, metrics: dict, live=None
+    db: Session,
+    day: date,
+    machine: Machine,
+    metrics: dict,
+    live=None,
+    shift_turn_id: Optional[int] = None,
+    collected_at: Optional[datetime] = None,
 ) -> DailyLoomData:
     """Cria/atualiza a linha do dashboard (idempotente por data+maquina)."""
     row = db.execute(
@@ -485,6 +543,9 @@ def _upsert_loom_data(
         )
         db.add(row)
 
+    if shift_turn_id is not None:
+        row.shift_turn_id = shift_turn_id
+
     for field in (
         "source",
         "shift_id",
@@ -492,6 +553,7 @@ def _upsert_loom_data(
         "beam",
         "production",
         "picks",
+        "pontos_reais",
         "meters",
         "efficiency",
         "rpm",
@@ -509,8 +571,19 @@ def _upsert_loom_data(
         if field in metrics:
             setattr(row, field, metrics[field])
 
+    # metros_reais e pontos_reais levam em conta tear duplo (is_double).
+    # Tear duplo produz o dobro de metros e pontos.
+    metros = metrics.get("meters")
+    picks = metrics.get("picks")
+    pontos_reais_calc = metrics.get("pontos_reais")
+    if pontos_reais_calc is None and picks is not None:
+        pontos_reais_calc = round((float(picks) * 1000) / 100, 3)
+    multiplicador = 2.0 if machine.is_double else 1.0
+    row.metros_reais = round(float(metros) * multiplicador, 3) if metros is not None else None
+    row.pontos_reais = round(float(pontos_reais_calc) * multiplicador, 3) if pontos_reais_calc is not None else None
+
     row.mac_name = machine.mac_name
-    row.collected_at = datetime.utcnow()
+    row.collected_at = collected_at or datetime.utcnow()
     if live is None:
         row.raw_data = {"source": metrics.get("source")}
     else:
@@ -607,7 +680,15 @@ def _collect_one(
     else:
         metrics = _resolve_metrics(db, machine, day, live=live, monitor=monitor)
 
-    _upsert_loom_data(db, day, machine, metrics, live)
+    # Resolve automaticamente o turno ativo para esta data/hora
+    collected_now = datetime.utcnow()
+    turn_id = _resolve_shift_turn(db, day, collected_now)
+
+    _upsert_loom_data(
+        db, day, machine, metrics, live,
+        shift_turn_id=turn_id,
+        collected_at=collected_now,
+    )
 
     item.status = "success"
     item.error_reason = None
@@ -805,14 +886,21 @@ def collect_daily_data(
             f"Processando {len(targets)} tear(es)…",
         )
         for index, item in enumerate(targets, start=1):
-            result = _collect_one(
-                db,
-                item,
-                day,
-                prefetched.get(item.machine_id),
-                allow_live=allow_live,
-                monitor_allowed=monitor_window,
-            )
+            try:
+                result = _collect_one(
+                    db,
+                    item,
+                    day,
+                    prefetched.get(item.machine_id),
+                    allow_live=allow_live,
+                    monitor_allowed=monitor_window,
+                )
+            except Exception as exc:  # um tear nao derruba a coleta inteira
+                log.exception("Falha inesperada ao coletar tear %s", item.mac_name)
+                item.status = "failed"
+                item.error_reason = f"Erro inesperado: {exc}"
+                item.in_retry_queue = True
+                result = "retry"
             item.in_retry_queue = result == "retry"
             collection_progress.process_completed(
                 day, index, len(targets), item.mac_name, result

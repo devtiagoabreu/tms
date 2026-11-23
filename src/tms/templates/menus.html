@@ -1,0 +1,395 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <h1 class="page-title">Configurar Menus</h1>
+  <p class="page-sub">Cadastre menus e itens de navegação, com ordenação e visibilidade por papel (admin/operador/visualizador).</p>
+</div>
+
+<div id="msg" style="margin-bottom:1rem"></div>
+
+<div class="grid">
+  <!-- MENUS PRINCIPAIS -->
+  <div class="card-pdm" id="menus-card" style="grid-column: 1 / -1;">
+    <div class="card-pdm-header">
+      <div>
+        <h2 class="card-pdm-title">Menus Principais</h2>
+        <p class="card-pdm-description">Arraste (ícone ⋮) para ordenar os grupos de menu.</p>
+      </div>
+      <button class="btn-pdm btn-pdm-default btn-pdm-sm" onclick="openMenuForm()">+ Novo Menu</button>
+    </div>
+    <div class="card-pdm-content">
+      <table class="table-pdm">
+        <thead>
+          <tr>
+            <th style="width:50px" class="ordem-col">#</th>
+            <th style="width:22%">Título</th>
+            <th style="width:14%">Ícone</th>
+            <th style="width:18%">URL</th>
+            <th style="width:14%">Role</th>
+            <th style="width:10%">Ativo</th>
+            <th style="width:22%">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="menus-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ITENS DO MENU SELECIONADO -->
+  <div class="card-pdm" id="itens-card" style="display:none; grid-column: 1 / -1;">
+    <div class="card-pdm-header">
+      <div>
+        <h2 class="card-pdm-title" id="itens-title">Itens do Menu</h2>
+        <p class="card-pdm-description" style="margin:4px 0 0">Itens dentro do menu selecionado.</p>
+      </div>
+      <div class="row" style="gap:0.5rem">
+        <button class="btn-pdm btn-pdm-outline btn-pdm-sm" onclick="closeItens()">← Voltar aos menus</button>
+        <button class="btn-pdm btn-pdm-default btn-pdm-sm" onclick="addItemForm()">+ Adicionar Item</button>
+      </div>
+    </div>
+    <div class="card-pdm-content">
+      <table class="table-pdm">
+        <thead>
+          <tr>
+            <th style="width:50px" class="ordem-col">#</th>
+            <th style="width:22%">Título</th>
+            <th style="width:14%">Ícone</th>
+            <th style="width:22%">URL</th>
+            <th style="width:10%">Ativo</th>
+            <th style="width:22%">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="itens-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- FORM MENU -->
+<div class="card-pdm" id="menu-form-card" style="display:none;">
+  <div class="card-pdm-header">
+    <div>
+      <h2 class="card-pdm-title" id="menu-form-title">Novo Menu</h2>
+    </div>
+    <button class="btn-pdm btn-pdm-outline btn-pdm-sm" onclick="closeMenuForm()">× Fechar</button>
+  </div>
+  <div class="card-pdm-content">
+    <form id="menu-form" onsubmit="saveMenu(event)">
+      <input type="hidden" id="menu-id">
+      <div class="form-row">
+        <div class="field" style="flex:1 1 220px">
+          <label>Título</label>
+          <input type="text" id="menu-titulo" class="input-pdm" placeholder="Ex: Visão geral">
+        </div>
+        <div class="field" style="flex:1 1 140px">
+          <label>Ícone</label>
+          <input type="text" id="menu-icone" class="input-pdm" placeholder="Ex: dashboard">
+        </div>
+        <div class="field" style="flex:1 1 200px">
+          <label>URL (opcional)</label>
+          <input type="text" id="menu-url" class="input-pdm" placeholder="Ex: /dashboard">
+        </div>
+        <div class="field" style="flex:1 1 180px">
+          <label>Role (admin\|operador\|visualizador)</label>
+          <input type="text" id="menu-role" class="input-pdm" placeholder="Deixe vazio para todos">
+        </div>
+        <div class="field" style="flex:0 0 auto; align-self:flex-end; display:flex; align-items:center; gap:0.5rem">
+          <label style="margin:0; font-size:0.875rem; font-weight:500; color:hsl(var(--foreground))">
+            <input type="checkbox" id="menu-ativo" checked> Ativo
+          </label>
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:1rem">
+        <button type="submit" class="btn-pdm btn-pdm-default">Salvar Menu</button>
+        <button type="button" class="btn-pdm btn-pdm-outline" onclick="closeMenuForm()">Cancelar</button>
+        <button type="button" class="btn-pdm btn-pdm-destructive btn-pdm-sm" id="btn-del-menu" onclick="deleteMenu()" style="margin-left:auto; display:none;">Excluir Menu</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- FORM ITEM -->
+<div class="card-pdm" id="item-form-card" style="display:none;">
+  <div class="card-pdm-header">
+    <div>
+      <h2 class="card-pdm-title" id="item-form-title">Novo Item</h2>
+    </div>
+    <button class="btn-pdm btn-pdm-outline btn-pdm-sm" onclick="closeItemForm()">× Fechar</button>
+  </div>
+  <div class="card-pdm-content">
+    <form id="item-form" onsubmit="saveItem(event)">
+      <input type="hidden" id="item-id">
+      <input type="hidden" id="item-menu-id">
+      <div class="form-row">
+        <div class="field" style="flex:1 1 220px">
+          <label>Título</label>
+          <input type="text" id="item-titulo" class="input-pdm" placeholder="Ex: Dashboard">
+        </div>
+        <div class="field" style="flex:1 1 140px">
+          <label>Ícone</label>
+          <input type="text" id="item-icone" class="input-pdm" placeholder="Ex: dashboard">
+        </div>
+        <div class="field" style="flex:1 1 220px">
+          <label>URL</label>
+          <input type="text" id="item-url" class="input-pdm" placeholder="Ex: /">
+        </div>
+        <div class="field" style="flex:0 0 auto; align-self:flex-end; display:flex; align-items:center; gap:0.5rem">
+          <label style="margin:0; font-size:0.875rem; font-weight:500; color:hsl(var(--foreground))">
+            <input type="checkbox" id="item-ativo" checked> Ativo
+          </label>
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:1rem">
+        <button type="submit" class="btn-pdm btn-pdm-default">Salvar Item</button>
+        <button type="button" class="btn-pdm btn-pdm-outline" onclick="closeItemForm()">Cancelar</button>
+        <button type="button" class="btn-pdm btn-pdm-destructive btn-pdm-sm" id="btn-del-item" onclick="deleteItem()" style="margin-left:auto; display:none;">Excluir Item</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  let menus = [];
+  let currentMenuId = null;
+  let currentItemId = null;
+
+  function showMsg(text, type='ok') {
+    const el = document.getElementById('msg');
+    const tone = type === 'err' ? 'danger' : type === 'ok' ? 'success' : 'default';
+    el.innerHTML = `<span class="badge-pdm badge-pdm-${tone}">${esc(text)}</span>`;
+    setTimeout(() => { el.innerHTML = ''; }, 5000);
+  }
+
+  async function api(path, method='GET', body=null) {
+    const opts = { method, headers: {} };
+    if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    const res = await fetch('/api/menus' + path, opts);
+    if (res.status === 401 || res.status === 403) { window.location.href = '/login'; return null; }
+    return await res.json();
+  }
+
+  async function loadMenus() {
+    menus = await api('') || [];
+    renderMenus();
+  }
+
+  function renderMenus() {
+    const body = document.getElementById('menus-body');
+    body.innerHTML = '';
+    if (!menus || menus.length === 0) {
+      body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:hsl(var(--muted-foreground));font-style:italic;padding:20px">Nenhum menu cadastrado.</td></tr>';
+      return;
+    }
+    const sorted = [...menus].sort((a, b) => a.ordem - b.ordem || a.title.localeCompare(b.title));
+    sorted.forEach((m, idx) => {
+      const activeChip = m.active
+        ? '<span class="badge-pdm badge-pdm-success">Ativo</span>'
+        : '<span class="badge-pdm badge-pdm-outline">Inativo</span>';
+      body.innerHTML += `
+        <tr>
+          <td class="ordem-col"><span style="cursor:grab;color:hsl(var(--muted-foreground))" onclick="editMenu(${m.id})">⋮</span></td>
+          <td><b>${esc(m.title)}</b></td>
+          <td>${esc(m.icon || '–')}</td>
+          <td>${esc(m.url || '–')}</td>
+          <td>${esc(m.role || 'todos')}</td>
+          <td>${activeChip}</td>
+          <td>
+            <button class="btn-pdm btn-pdm-outline btn-pdm-sm" onclick="editMenu(${m.id})">Editar</button>
+            <button class="btn-pdm btn-pdm-outline btn-pdm-sm" onclick="verItens(${m.id})">Itens</button>
+            <button class="btn-pdm btn-pdm-${m.active ? 'outline' : 'success'} btn-pdm-sm" onclick="toggleMenu(${m.id}, ${m.active})">${m.active ? 'Desligar' : 'Ligar'}</button>
+            <button class="btn-pdm btn-pdm-destructive btn-pdm-sm" onclick="excluirMenu(${m.id})">Excluir</button>
+          </td>
+        </tr>
+      `;
+    });
+  }
+
+  function openMenuForm() {
+    currentMenuId = null;
+    document.getElementById('menu-form').reset();
+    document.getElementById('menu-id').value = '';
+    document.getElementById('menu-form-title').textContent = 'Novo Menu';
+    document.getElementById('btn-del-menu').style.display = 'none';
+    document.getElementById('menu-form-card').style.display = 'block';
+  }
+
+  function closeMenuForm() {
+    currentMenuId = null;
+    document.getElementById('menu-form-card').style.display = 'none';
+  }
+
+  async function editMenu(id) {
+    const m = menus.find(x => x.id === id);
+    if (!m) return;
+    currentMenuId = id;
+    document.getElementById('menu-id').value = m.id;
+    document.getElementById('menu-titulo').value = m.title;
+    document.getElementById('menu-icone').value = m.icon || '';
+    document.getElementById('menu-url').value = m.url || '';
+    document.getElementById('menu-role').value = m.role || '';
+    document.getElementById('menu-ativo').checked = m.active;
+    document.getElementById('menu-form-title').textContent = 'Editar Menu';
+    document.getElementById('btn-del-menu').style.display = 'inline-block';
+    document.getElementById('menu-form-card').style.display = 'block';
+  }
+
+  async function saveMenu(ev) {
+    ev.preventDefault();
+    const payload = {
+      title: document.getElementById('menu-titulo').value,
+      icon: document.getElementById('menu-icone').value || null,
+      url: document.getElementById('menu-url').value || null,
+      role: document.getElementById('menu-role').value || null,
+      active: document.getElementById('menu-ativo').checked,
+    };
+    if (!payload.title) { showMsg('Título é obrigatório', 'err'); return; }
+    const url = currentMenuId ? '/' + currentMenuId : '';
+    const method = currentMenuId ? 'PUT' : 'POST';
+    const res = await api(url, method, payload);
+    if (!res) return;
+    showMsg(currentMenuId ? 'Menu atualizado' : 'Menu criado');
+    closeMenuForm();
+    await loadMenus();
+  }
+
+  async function toggleMenu(id, active) {
+    const m = menus.find(x => x.id === id);
+    await api('/' + id, 'PUT', { ...m, active: !active });
+    await loadMenus();
+  }
+
+  async function excluirMenu(id) {
+    if (!confirm('Excluir este menu e todos os seus itens?')) return;
+    await api('/' + id, 'DELETE');
+    showMsg('Menu excluído');
+    await loadMenus();
+  }
+
+  function deleteMenu() {
+    if (!currentMenuId) return;
+    excluirMenu(currentMenuId);
+    closeMenuForm();
+  }
+
+  // --- Itens ---
+  async function verItens(menuId) {
+    currentMenuId = menuId;
+    const m = menus.find(x => x.id === menuId);
+    document.getElementById('itens-title').textContent = 'Itens - ' + (m ? esc(m.title) : '');
+    document.getElementById('itens-card').style.display = 'block';
+    document.getElementById('menus-card').style.display = 'none';
+    await loadItens();
+  }
+
+  function closeItens() {
+    currentMenuId = null;
+    document.getElementById('itens-card').style.display = 'none';
+    document.getElementById('menus-card').style.display = 'block';
+  }
+
+  async function loadItens() {
+    const itens = await api('/' + currentMenuId + '/itens') || [];
+    const body = document.getElementById('itens-body');
+    body.innerHTML = '';
+    if (!itens || itens.length === 0) {
+      body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--muted-foreground));font-style:italic;padding:20px">Nenhum item cadastrado.</td></tr>';
+      return;
+    }
+    const sorted = [...itens].sort((a, b) => a.ordem - b.ordem || a.title.localeCompare(b.title));
+    sorted.forEach((it) => {
+      const activeChip = it.active
+        ? '<span class="badge-pdm badge-pdm-success">Ativo</span>'
+        : '<span class="badge-pdm badge-pdm-outline">Inativo</span>';
+      body.innerHTML += `
+        <tr>
+          <td class="ordem-col"><span style="cursor:grab;color:hsl(var(--muted-foreground))" onclick="editItem(${it.id})">⋮</span></td>
+          <td><b>${esc(it.title)}</b></td>
+          <td>${esc(it.icon || '–')}</td>
+          <td>${esc(it.url || '–')}</td>
+          <td>${activeChip}</td>
+          <td>
+            <button class="btn-pdm btn-pdm-outline btn-pdm-sm" onclick="editItem(${it.id})">Editar</button>
+            <button class="btn-pdm btn-pdm-${it.active ? 'outline' : 'success'} btn-pdm-sm" onclick="toggleItem(${it.id}, ${it.active})">${it.active ? 'Desligar' : 'Ligar'}</button>
+            <button class="btn-pdm btn-pdm-destructive btn-pdm-sm" onclick="excluirItem(${it.id})">Excluir</button>
+          </td>
+        </tr>
+      `;
+    });
+  }
+
+  function addItemForm() {
+    currentItemId = null;
+    document.getElementById('item-form').reset();
+    document.getElementById('item-id').value = '';
+    document.getElementById('item-menu-id').value = currentMenuId;
+    document.getElementById('item-form-title').textContent = 'Novo Item';
+    document.getElementById('btn-del-item').style.display = 'none';
+    document.getElementById('item-form-card').style.display = 'block';
+  }
+
+  function closeItemForm() {
+    currentItemId = null;
+    document.getElementById('item-form-card').style.display = 'none';
+  }
+
+  async function editItem(id) {
+    const res = await api('/' + currentMenuId + '/itens');
+    const it = res.find(x => x.id === id);
+    if (!it) return;
+    currentItemId = id;
+    document.getElementById('item-id').value = it.id;
+    document.getElementById('item-menu-id').value = currentMenuId;
+    document.getElementById('item-titulo').value = it.title;
+    document.getElementById('item-icone').value = it.icon || '';
+    document.getElementById('item-url').value = it.url || '';
+    document.getElementById('item-ativo').checked = it.active;
+    document.getElementById('item-form-title').textContent = 'Editar Item';
+    document.getElementById('btn-del-item').style.display = 'inline-block';
+    document.getElementById('item-form-card').style.display = 'block';
+  }
+
+  async function saveItem(ev) {
+    ev.preventDefault();
+    const payload = {
+      title: document.getElementById('item-titulo').value,
+      icon: document.getElementById('item-icone').value || null,
+      url: document.getElementById('item-url').value || null,
+      active: document.getElementById('item-ativo').checked,
+    };
+    if (!payload.title) { showMsg('Título é obrigatório', 'err'); return; }
+    const url = currentItemId ? '/itens/' + currentItemId : '/' + currentMenuId + '/itens';
+    const method = currentItemId ? 'PUT' : 'POST';
+    const res = await api(url, method, payload);
+    if (!res) return;
+    showMsg(currentItemId ? 'Item atualizado' : 'Item criado');
+    closeItemForm();
+    await loadItens();
+  }
+
+  async function toggleItem(id, active) {
+    const res = await api('/' + currentMenuId + '/itens');
+    const it = res.find(x => x.id === id);
+    await api('/itens/' + id, 'PUT', { ...it, active: !active });
+    await loadItens();
+  }
+
+  async function excluirItem(id) {
+    if (!confirm('Excluir este item?')) return;
+    await api('/itens/' + id, 'DELETE');
+    showMsg('Item excluído');
+    await loadItens();
+  }
+
+  function deleteItem() {
+    if (!currentItemId) return;
+    excluirItem(currentItemId);
+    closeItemForm();
+  }
+
+  loadMenus();
+</script>
+{% endblock %}

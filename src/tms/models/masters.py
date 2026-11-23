@@ -18,12 +18,21 @@ class Machine(Base):
     mac_type: Mapped[str] = mapped_column(String(8), default="JAT")  # JAT | LWT
     ip_addr: Mapped[str | None] = mapped_column(String(45))
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_double: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
 
     snapshots = relationship("MachineSnapshot", back_populates="machine")
+    group_members = relationship(
+        "MachineGroupMember", back_populates="machine", cascade="all, delete-orphan"
+    )
+
+    @property
+    def group(self):
+        """Retorna o(s) grupo(s) ao qual o tear pertence."""
+        return [m.group for m in self.group_members if m.group]
 
 
 class Style(Base):
@@ -54,12 +63,27 @@ class IpRange(Base):
 
 
 class Operator(Base):
+    """Operador (tecelão, contra-mestre, supervisor, etc.)."""
+
     __tablename__ = "operators"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(16), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(64))
+    role: Mapped[str | None] = mapped_column(
+        String(32), default="tecelao"
+    )  # tecelao | contra_mestre | supervisor
     shift_day: Mapped[str | None] = mapped_column(String(16))  # ope_num no legado
+    group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("machine_groups.id"), nullable=True, index=True
+    )
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    group = relationship("MachineGroup")
 
 
 class ShiftSchedule(Base):

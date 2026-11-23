@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  /* Toggle de permissões (mantido do HTML original; usado também pelo JS de renderização) */
+  .switch { position: relative; display: inline-block; width: 44px; height: 24px; vertical-align: middle; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: hsl(var(--muted-foreground) / 45%); border-radius: 24px; transition: .2s; }
+  .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+  input:checked + .slider { background: var(--tms-success); }
+  input:checked + .slider:before { transform: translateX(20px); }
+  .modulo { font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em; color: hsl(var(--muted-foreground)); font-weight: 600; }
+</style>
+
+<div class="page-head">
+  <h1 class="page-title">Roles e Permissões</h1>
+  <p class="page-sub">Gerencie as permissões de cada role (admin, operador e visualizador). Alterações são salvas automaticamente.</p>
+</div>
+
+<div id="msg" style="margin-bottom:1rem"></div>
+
+<div class="card-pdm">
+  <div class="card-pdm-header">
+    <div>
+      <h2 class="card-pdm-title">Permissões por Role</h2>
+      <p class="card-pdm-description" style="margin:4px 0 0">Marque as permissões que cada role deve ter. Alterações são salvas automaticamente.</p>
+    </div>
+  </div>
+  <div class="card-pdm-content">
+    <div id="admin-section" style="margin-bottom:1rem">
+      <h3 class="card-pdm-title" style="font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.05em">Admin</h3>
+      <table id="table-admin" class="table-pdm"></table>
+    </div>
+
+    <div id="operador-section" style="margin-bottom:1rem">
+      <h3 class="card-pdm-title" style="font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.05em">Operador</h3>
+      <table id="table-operador" class="table-pdm"></table>
+    </div>
+
+    <div id="visualizador-section" style="margin-bottom:1rem">
+      <h3 class="card-pdm-title" style="font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.05em">Visualizador</h3>
+      <table id="table-visualizador" class="table-pdm"></table>
+    </div>
+  </div>
+</div>
+
+<script>
+let permissoes = [];
+let roleData = {}; // role -> { chave: active }
+
+const ROLES = ['admin', 'operador', 'visualizador'];
+
+function showMsg(text, type='ok') {
+  const el = document.getElementById('msg');
+  const tone = type === 'err' ? 'danger' : 'success';
+  el.innerHTML = `<span class="badge-pdm badge-pdm-${tone}">${text}</span>`;
+  setTimeout(() => { el.innerHTML = ''; }, 5000);
+}
+
+async function api(path, method='GET', body=null) {
+  const opts = { method, headers: {} };
+  if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  const res = await fetch('/api/roles' + path, opts);
+  if (res.status === 401 || res.status === 403) { window.location.href = '/login'; return null; }
+  return await res.json();
+}
+
+async function load() {
+  [permissoes] = await Promise.all([
+    api('/permissoes')
+  ]);
+  if (!permissoes) return;
+
+  // Agrupar por módulo
+  const modulos = {};
+  permissoes.forEach(p => {
+    if (!modulos[p.modulo]) modulos[p.modulo] = [];
+    modulos[p.modulo].push(p);
+  });
+
+  // Carregar dados de cada role
+  for (const role of ROLES) {
+    roleData[role] = {};
+    const data = await api('/' + role);
+    if (data) {
+      data.permissions.forEach(p => {
+        roleData[role][p.chave] = p.active;
+      });
+    }
+  }
+
+  render();
+}
+
+function render() {
+  const modulos = {};
+  permissoes.forEach(p => {
+    if (!modulos[p.modulo]) modulos[p.modulo] = [];
+    modulos[p.modulo].push(p);
+  });
+
+  const moduloOrder = ['teares', 'coletar', 'menus', 'cadastros', 'relatorios', 'monitor', 'admin'];
+
+  ROLES.forEach(role => {
+    const container = document.getElementById(role + '-section');
+    const table = document.getElementById('table-' + role);
+    table.innerHTML = '';
+
+    // Cabeçalho
+    table.innerHTML = `
+      <thead>
+        <tr><th style="width:30%">Permissão</th><th style="width:20%">Descrição</th><th style="width:12%">Ativo</th></tr>
+      </thead>
+      <tbody></tbody>
+    `;
+    const tbody = table.querySelector('tbody');
+
+    moduloOrder.forEach(mod => {
+      if (!modulos[mod]) return;
+      // Grupo por módulo
+      const grupo = modulos[mod];
+      const row = document.createElement('tr');
+      row.innerHTML = `<td colspan="3"><div class="modulo">${mod.toUpperCase()}</div></td>`;
+      tbody.appendChild(row);
+
+      grupo.forEach(p => {
+        const isActive = roleData[role] && roleData[role][p.chave] === true;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><b>${p.chave}</b></td>
+          <td>${p.descricao || '–'}</td>
+            <td style="text-align:center;">
+              <label class="switch">
+                <input type="checkbox" ${isActive ? 'checked' : ''}
+                  onchange="togglePermission('${role}', ${p.id}, this.checked)">
+                <span class="slider"></span>
+              </label>
+            </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    });
+  });
+}
+
+async function togglePermission(role, permissionId, active) {
+  const res = await api('/' + role, 'POST', { permission_id: permissionId, active: active });
+  if (!res) return;
+  roleData[role] = roleData[role] || {};
+  roleData[role][permissionId] = active;
+  showMsg(`Permissão ${active ? 'ativada' : 'desativada'} para ${role}`);
+}
+
+load();
+</script>
+{% endblock %}

@@ -1,1 +1,220 @@
-<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>TMS - Monitor</title><style>  :root { color-scheme: dark; }  body { margin: 0; font-family: system-ui, "Segoe UI", sans-serif; background: #121417; color: #e8eaed; }  header { padding: 12px 20px; background: #1b1f24; display: flex; gap: 24px; align-items: baseline; flex-wrap: wrap; }  header h1 { font-size: 18px; margin: 0; font-weight: 600; }  .kpi { font-size: 13px; color: #9aa0a6; }  .kpi b { color: #e8eaed; font-size: 15px; }  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; padding: 14px; }  .card { border-radius: 8px; padding: 12px; background: #1b1f24; border-left: 6px solid #607D8B; }  .card .top { display: flex; justify-content: space-between; align-items: baseline; }  .card .mac { font-size: 20px; font-weight: 700; }  .card .state { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }  .card .row { display: flex; justify-content: space-between; font-size: 12px; color: #bdc1c6; margin-top: 4px; }  .card .stop { margin-top: 8px; font-size: 12px; color: #ff8a80; }  .bar { height: 6px; border-radius: 3px; background: #303134; margin-top: 8px; overflow: hidden; }  .bar > span { display: block; height: 100%; background: #4CAF50; }  footer { padding: 8px 20px; font-size: 12px; color: #9aa0a6; }</style></head><body><header>  <h1>TMS - Monitor</h1>  <span class="kpi">Em operaÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£o <b id="k-run">-</b>/<span id="k-total">-</span></span>  <span class="kpi">Paradas <b id="k-stop">-</b></span>  <span class="kpi">Sem comunicaÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£o <b id="k-off">-</b></span>  <span class="kpi">EficiÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªncia mÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©dia <b id="k-eff">-</b>%</span></header><div id="grid"></div><footer>Atualizado <span id="ts">-</span> &middot; recarrega a cada 30s</footer><script>const grid = document.getElementById('grid');function card(m) {  const eff = m.efficiency == null ? '-' : m.efficiency.toFixed(1);  const prod = m.production == null ? '-' : m.production;  const rpm = m.rpm == null ? '-' : m.rpm;  const stop = m.stop ? `<div class="stop">${m.stop.cause} (${m.stop.duration_min ?? '?'} min)</div>` : '';  const bar = m.efficiency == null ? '' : `<div class="bar"><span style="width:${Math.min(100, m.efficiency)}%"></span></div>`;  const live = m.live ? `<div class="row"><span>${m.live.status}</span><span>24h ${m.live.efficiency_24h ?? '-'}%</span></div>` : '';  return `<div class="card" style="border-left-color:${m.color}">    <div class="top"><span class="mac">${m.mac_name}</span><span class="state" style="color:${m.color}">${m.state_label}</span></div>    <div class="row"><span>${m.mac_type} ${m.style || ''}</span><span>visto hÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ ${m.age_min ?? '?'} min</span></div>    <div class="row"><span>ProduÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£o ${prod}</span><span>RPM ${rpm}</span></div>    <div class="row"><span>EficiÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªncia ${eff}%</span><span>${m.shift_id || ''}</span></div>    ${live}${bar}${stop}  </div>`;}async function refresh() {  const res = await fetch('/api/monitor?stored=true');  const data = await res.json();  grid.innerHTML = data.map(card).join('');  const run = data.filter(m => m.state === 'run').length;  const off = data.filter(m => m.state === 'offline' || m.state === 'no_data').length;  const stopped = data.filter(m => m.state === 'stopped').length;  const effs = data.map(m => m.efficiency).filter(v => v != null);  document.getElementById('k-run').textContent = run;  document.getElementById('k-total').textContent = data.length;  document.getElementById('k-stop').textContent = stopped;  document.getElementById('k-off').textContent = off;  document.getElementById('k-eff').textContent = effs.length ? (effs.reduce((a, b) => a + b, 0) / effs.length).toFixed(1) : '-';  document.getElementById('ts').textContent = new Date().toLocaleTimeString();}refresh();setInterval(refresh, 30000);</script></body></html>
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div class="row" style="justify-content:space-between;align-items:center">
+    <div>
+      <h1 class="page-title">Monitor de teares</h1>
+      <p class="page-sub">
+        Estado atual de cada tear (refresh automático a cada 30s) &mdash;
+        <code>GET /api/monitor</code>
+      </p>
+    </div>
+    <div class="row" style="gap:0.5rem">
+      <button class="btn btn-sm btn-primary" id="btnRefresh">Atualizar agora</button>
+      <label class="field" style="margin:0">
+        <span style="font-size:0.75rem;color:hsl(var(--muted-foreground));margin-right:0.25rem">Fonte</span>
+        <select id="srcSel" class="select-pdm" style="width:auto;padding:4px 8px">
+          <option value="auto">Banco (automático)</option>
+          <option value="live">Ao vivo (coleta direta)</option>
+          <option value="stored">Último status gravado</option>
+        </select>
+      </label>
+    </div>
+  </div>
+</div>
+
+<div class="kpi-grid">
+  <div class="kpi kpi-accent">
+    <span class="kpi-label">Teares no parque</span>
+    <span class="kpi-value" id="k-total">-</span>
+  </div>
+  <div class="kpi kpi-ok">
+    <span class="kpi-label">Em operação</span>
+    <span class="kpi-value" id="k-run">-</span>
+  </div>
+  <div class="kpi kpi-warn">
+    <span class="kpi-label">Parados</span>
+    <span class="kpi-value" id="k-stop">-</span>
+  </div>
+  <div class="kpi kpi-bad">
+    <span class="kpi-label">Sem comunicação</span>
+    <span class="kpi-value" id="k-off">-</span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-label">Eficiência média</span>
+    <span class="kpi-value" id="k-eff">-</span><span class="kpi-value" style="font-size:0.8125rem;font-weight:550">%</span>
+  </div>
+</div>
+
+<div class="alert alert-info no-print" id="alertSource" hidden>
+  <svg class="alert-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+    <circle cx="8" cy="8" r="6.4"/><path d="M8 4.8v3.6M8 11.2h.01"/>
+  </svg>
+  <div>
+    <p class="alert-title" id="alertTitle">Fonte de dados</p>
+    <p id="alertMsg" style="margin:0;opacity:0.86"></p>
+  </div>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<div class="status-line" id="status" style="margin-top:1rem"></div>
+
+<p class="muted" style="font-size:0.75rem;text-align:right">Atualizado <span id="ts">-</span> &middot; recarrega a cada 30s</p>
+
+<script type="module">
+  import { fetchJSON, esc, setStatus } from '/static/js/tms.js';
+
+  const grid = document.getElementById('grid');
+  const statusEl = document.getElementById('status');
+  const tsEl = document.getElementById('ts');
+  const els = {
+    total: document.getElementById('k-total'),
+    run: document.getElementById('k-run'),
+    stop: document.getElementById('k-stop'),
+    off: document.getElementById('k-off'),
+    eff: document.getElementById('k-eff'),
+  };
+  const srcSel = document.getElementById('srcSel');
+  const alertBox = document.getElementById('alertSource');
+  const alertTitle = document.getElementById('alertTitle');
+  const alertMsg = document.getElementById('alertMsg');
+
+  const STATE_CLASS = {
+    run: 'badge-pdm-success',
+    stopped: 'badge-pdm-warning',
+    offline: 'badge-pdm-danger',
+    no_data: 'badge-pdm-outline',
+  };
+  const STATE_COLOR = {
+    run: 'var(--tms-success)',
+    stopped: 'var(--tms-warning)',
+    offline: 'var(--tms-danger)',
+    no_data: 'hsl(var(--muted-foreground))',
+  };
+
+  function stateLabel(s) {
+    const m = { run: 'Em operação', stopped: 'Parado', offline: 'Sem comunicação', no_data: 'Sem dados' };
+    return m[s] || s;
+  }
+
+  function fmtPct(v) {
+    if (v === null || v === undefined || Number.isNaN(Number(v))) return '-';
+    return Number(v).toFixed(1);
+  }
+
+  function renderMachines(data) {
+    const machines = data.machines || [];
+    grid.innerHTML = '';
+
+    let run = 0, stop = 0, off = 0, nd = 0;
+    let effSum = 0, effN = 0;
+
+    machines.forEach((m) => {
+      const st = m.state || 'no_data';
+      if (st === 'run') run++;
+      else if (st === 'stopped') stop++;
+      else if (st === 'offline') off++;
+      else nd++;
+      if (m.efficiency !== null && m.efficiency !== undefined) { effSum += Number(m.efficiency); effN++; }
+
+      const card = document.createElement('article');
+      card.className = 'card-pdm card-hover';
+      card.style.borderLeft = `4px solid ${STATE_COLOR[st] || 'hsl(var(--border))'}`;
+
+      const stopHtml = m.stopped && m.stopped.duration_min !== undefined
+        ? `<div class="row" style="margin-top:6px;color:hsl(var(--tms-danger))">
+             <span style="font-weight:600">Parado há</span>
+             <span style="margin-left:auto">${Math.round(m.stopped.duration_min)} min</span>
+             ${m.stopped.raw_code ? `<span style="margin-left:0.5rem;font-size:0.75rem;color:hsl(var(--muted-foreground))">${esc(m.stopped.raw_code)}</span>` : ''}
+           </div>` : '';
+
+      const eff = m.efficiency !== null && m.efficiency !== undefined
+        ? fmtPct(m.efficiency) + '%'
+        : '-';
+      const rpm = m.rpm !== null && m.rpm !== undefined ? Math.round(m.rpm) : '-';
+
+      card.innerHTML = `
+        <div class="card-pdm-header" style="border-bottom:none;padding:1rem 1rem 0.75rem">
+          <div style="display:flex;align-items:baseline;gap:0.5rem">
+            <span style="font-size:1.125rem;font-weight:700;color:hsl(var(--foreground))">${esc(m.mac_name)}</span>
+            <span class="badge-pdm ${STATE_CLASS[st]}" style="font-size:0.6875rem">${stateLabel(st)}</span>
+          </div>
+          <p style="margin:4px 0 0;font-size:0.75rem;color:hsl(var(--muted-foreground))">
+            ${esc(m.mac_type || '-')} &middot; IP ${esc(m.ip_addr || '-')}
+          </p>
+        </div>
+        <div class="card-pdm-content" style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+          <div class="meter" style="padding:0">
+            <div class="meter-head" style="font-size:0.75rem">
+              <span class="meter-name">Eficiência</span>
+              <span class="meter-value">${eff}</span>
+            </div>
+            <div class="meter-track">
+              <div class="meter-fill" style="width:${m.efficiency !== null && m.efficiency !== undefined ? Math.min(100, Math.max(0, m.efficiency)) : 0}%;background:${STATE_COLOR[st] || 'hsl(var(--border))'};"></div>
+            </div>
+          </div>
+          <div class="meter" style="padding:0">
+            <div class="meter-head" style="font-size:0.75rem">
+              <span class="meter-name">RPM</span>
+              <span class="meter-value">${rpm}</span>
+            </div>
+            <div class="meter-track">
+              <div class="meter-fill" style="width:${rpm !== '-' ? Math.min(100, Math.max(0, rpm / 1000 * 100)) : 0}%;background:hsl(var(--primary));"></div>
+            </div>
+          </div>
+        </div>
+        ${stopHtml ? `<div style="grid-column:1/-1">${stopHtml}</div>` : ''}
+        <div class="card-pdm-footer" style="border-top:none;padding:0.5rem 1rem 1rem">
+          <span class="muted" style="font-size:0.7rem">${esc(m.source || '')} &middot; ${esc(m.updated_at || '-')}</span>
+        </div>
+      `;
+      grid.appendChild(card);
+    });
+
+    if (els.total) els.total.textContent = machines.length;
+    if (els.run) els.run.textContent = run;
+    if (els.stop) els.stop.textContent = stop;
+    if (els.off) els.off.textContent = off;
+    const effAvg = effN ? (effSum / effN).toFixed(1) : '-';
+    if (els.eff) els.eff.textContent = effAvg;
+    if (tsEl) tsEl.textContent = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  async function load() {
+    const source = srcSel.value;
+    let url = '/api/monitor';
+    let label = 'Banco (automático)';
+    if (source === 'live') { url += '?live=true'; label = 'Ao vivo (coleta direta)'; }
+    else if (source === 'stored') { url += '?stored=true'; label = 'Último status gravado'; }
+
+    if (alertBox) {
+      alertBox.hidden = false;
+      alertTitle.textContent = 'Fonte de dados';
+      alertMsg.textContent = label;
+      alertBox.className = 'alert alert-pdm-' + (source === 'live' ? 'warning' : source === 'stored' ? 'default' : 'success');
+    }
+
+    const { ok, json, status } = await fetchJSON(url);
+    if (!ok) {
+      setStatus(statusEl, `Erro ${status}`, 'danger');
+      return;
+    }
+    renderMachines(json || {});
+    setStatus(statusEl, `${(json && json.machines && json.machines.length) || 0} tear(es)`, 'success');
+  }
+
+  if (document.getElementById('btnRefresh')) {
+    document.getElementById('btnRefresh').addEventListener('click', load);
+  }
+  if (srcSel) {
+    srcSel.addEventListener('change', load);
+  }
+
+  load();
+  const timer = setInterval(load, 30000);
+
+  // Encerra o polling ao navegar fora (evita vazamento entre páginas SPA-like)
+  window.addEventListener('beforeunload', () => clearInterval(timer));
+</script>
+{% endblock %}

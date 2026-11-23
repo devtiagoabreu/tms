@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from tms import __version__
 from tms.app.deps.auth import SESSION_COOKIE_NAME, get_current_user, require_user
@@ -17,6 +17,7 @@ from tms.core.auth import create_session_token, verify_password
 from tms.db.base import get_db
 from tms.models.auth import User
 from tms.models.daily import DailyCollectionItem, DailyCollectionRun, DailyLoomData
+from tms.models.navigation import Menu
 from tms.services.daily_collection import collection_gaps, get_yesterday
 from tms.services.monthly import current_and_previous_months, month_summary
 
@@ -27,178 +28,55 @@ from pathlib import Path
 templates_dir = Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=str(templates_dir))
 
-NAV: tuple[dict, ...] = (
-    {
-        "label": "Visão geral",
-        "icon": "dashboard",
-        "items": (
-            {
-                "href": "/",
-                "label": "Dashboard",
-                "icon": "dashboard",
-                "match": ("/",),
-                "desc": "Dashboard diário: dados coletados dos teares no dia anterior, teares que faltaram e fila de retentativa.",
-                "legacy": "Menu Principal",
-                "legacy_path": "tms/index.cgi",
-            },
-            {
-                "href": "/reports",
-                "label": "Relatórios",
-                "icon": "reports",
-                "match": ("/reports",),
-                "desc": "Consulta consolidada por dia, semana ou mês, filtrando por máquina, intervalo de datas e unidade de medida.",
-                "legacy": "Relatorio de Turno / Relatorio por Operador",
-                "legacy_path": "tms/shift/select_s.cgi · tms/operator/select_p.cgi",
-            },
-            {
-                "href": "/telas",
-                "label": "Telas",
-                "icon": "layers",
-                "match": ("/telas",),
-                "desc": "Formulário único que consulta qualquer tela do sistema sem trocar de página.",
-                "legacy": "Menu Principal",
-                "legacy_path": "tms/index.cgi",
-            },
-            {
-                "href": "/monitor",
-                "label": "Monitor",
-                "icon": "monitor",
-                "match": ("/monitor",),
-                "desc": "Situação das máquinas em tempo real: estado, eficiência, paradas e leitura direta da rede.",
-                "legacy": "Display Operacao",
-                "legacy_path": "tms/loom/opestate.cgi",
-            },
-        ),
-    },
-    {
-        "label": "Telas de produção",
-        "icon": "chart",
-        "items": (
-            {
-                "href": "/screens/efficiency",
-                "label": "Eficiência",
-                "icon": "bolt",
-                "match": ("/screens/efficiency",),
-                "desc": "Eficiência por loom ou operador, com tempo de roda, parada e fios de urdume e trama.",
-                "legacy": "Grafico de Eficiencia",
-                "legacy_path": "tms/shift/select_s.cgi?mode=efficiency",
-            },
-            {
-                "href": "/screens/production",
-                "label": "Produção",
-                "icon": "box",
-                "match": ("/screens/production",),
-                "desc": "Quantidade produzida por loom ou operador no período selecionado.",
-                "legacy": "Grafico de Producao",
-                "legacy_path": "tms/shift/select_s.cgi?mode=production",
-            },
-            {
-                "href": "/screens/stop-analysis",
-                "label": "Análise de Paradas",
-                "icon": "alert",
-                "match": ("/screens/stop-analysis",),
-                "desc": "Ranking de paradas por causa, medido em contagem de eventos ou em tempo.",
-                "legacy": "Grafico de Analise de Paradas",
-                "legacy_path": "tms/shift/select_s.cgi?mode=stopanalysis",
-            },
-            {
-                "href": "/screens/shiftreport",
-                "label": "Relatório de Turno",
-                "icon": "clock",
-                "match": ("/screens/shiftreport",),
-                "desc": "Indicadores consolidados de cada turno, agrupados por loom ou estilo.",
-                "legacy": "Relatorio de Turno",
-                "legacy_path": "tms/shift/select_s.cgi?mode=shiftreport",
-            },
-            {
-                "href": "/screens/stylereport",
-                "label": "Relatório de Artigo",
-                "icon": "tag",
-                "match": ("/screens/stylereport",),
-                "desc": "Desempenho por artigo (estilo) de tecido, com unidade e tipo de feixe.",
-                "legacy": "Relatorio de Artigo",
-                "legacy_path": "tms/shift/select_s.cgi?mode=stylereport",
-            },
-            {
-                "href": "/screens/showstyle",
-                "label": "Histórico de Artigos",
-                "icon": "list",
-                "match": ("/screens/showstyle",),
-                "desc": "Sequência de artigos processados por loom ou estilo, por turno ou operador.",
-                "legacy": "Mostrar Historico de Artigos",
-                "legacy_path": "tms/edit/showstyle.cgi",
-            },
-        ),
-    },
-    {
-        "label": "Históricos",
-        "icon": "history",
-        "items": (
-            {
-                "href": "/screens/statushistory",
-                "label": "Histórico",
-                "icon": "activity",
-                "match": ("/screens/statushistory",),
-                "desc": "Evolução do status do equipamento ao longo do período, por loom ou estilo.",
-                "legacy": "Historico",
-                "legacy_path": "tms/shift/select_s.cgi?mode=statushistory",
-            },
-            {
-                "href": "/screens/stophistory",
-                "label": "Histórico de Paradas",
-                "icon": "history",
-                "match": ("/screens/stophistory",),
-                "desc": "Registro detalhado de cada parada com causa e duração dentro do intervalo informado.",
-                "legacy": "Historico de Parada",
-                "legacy_path": "tms/shift/stophistory.cgi",
-            },
-            {
-                "href": "/screens/svsreport",
-                "label": "Relatório de Serviço",
-                "icon": "wrench",
-                "match": ("/screens/svsreport",),
-                "desc": "Relatório de serviço do turno, com seleção por loom ou estilo e tipo de feixe.",
-                "legacy": "Dados Relatorio Servico",
-                "legacy_path": "tms/shift2/select_s2.cgi?mode=svsreport",
-            },
-        ),
-    },
-    {
-        "label": "Sistema",
-        "icon": "settings",
-        "items": (
-            {
-                "href": "/machines",
-                "label": "Máquinas",
-                "icon": "cpu",
-                "match": ("/machines",),
-                "desc": "Cadastro dos equipamentos com IP e situação, e leitura do snapshot de cada loom.",
-                "legacy": "Coleta de Dados(Rede)",
-                "legacy_path": "tms/loom/getdata.cgi",
-            },
-            {
-                "href": "/config",
-                "label": "Configurações",
-                "icon": "settings",
-                "match": ("/config",),
-                "desc": "Edita faixas de IP, lista de artigos, definição de turno e preferências de relatório.",
-                "legacy": "Ajuste de Relatorio / Ajuste Artigo / Trocar Ajuste Cronograma",
-                "legacy_path": "tms/setting/selitem.cgi · tms/scanset/styleset.cgi",
-            },
-            {
-                "href": "/docs",
-                "label": "API /docs",
-                "icon": "code",
-                "match": ("/docs",),
-                "desc": "Documentação interativa dos endpoints JSON e CSV que substituem os CGIs do sistema legado.",
-                "legacy": "—",
-                "legacy_path": "substitui os CGIs de tms.zip",
-            },
-        ),
-    },
-)
 
-templates.env.globals["nav"] = NAV
+def get_user_menus(db: Session, usuario_id: int) -> list[dict]:
+    """Retorna os menus visíveis para o usuário (mesclados por role +
+    menus pessoais), ordenados."""
+    user = db.get(User, usuario_id)
+    if user is None:
+        return []
+
+    menus = (
+        db.execute(
+            select(Menu)
+            .options(selectinload(Menu.items))
+            .where(
+                Menu.active.is_(True),
+                (
+                    (Menu.usuario_id.is_(None) & Menu.role.is_(None))  # global
+                    | (Menu.role == user.role.value)  # por role
+                    | (Menu.usuario_id == usuario_id)  # pessoal
+                ),
+            )
+            .order_by(Menu.ordem, Menu.title)
+        )
+        .scalars()
+        .all()
+    )
+
+    out = []
+    for m in menus:
+        items = sorted(m.items, key=lambda i: (i.ordem, i.title))
+        out.append(
+            {
+                "id": m.id,
+                "label": m.title,
+                "icon": m.icon,
+                "url": m.url,
+                "ordem": m.ordem,
+                "items": [
+                    {
+                        "href": i.url or "#",
+                        "label": i.title,
+                        "icon": i.icon,
+                        "match": (i.url or "#",),
+                        "desc": "",
+                    }
+                    for i in items if i.active
+                ],
+            }
+        )
+    return out
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -296,6 +174,51 @@ def reports_page(request: Request, db: Session = Depends(get_db)) -> HTMLRespons
     )
 
 
+@router.get("/reports/daily", response_class=HTMLResponse)
+def reports_daily_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "reports_daily.html",
+        {
+            "title": "TMS - Relatório de Coleta Diária",
+            "version": __version__,
+            "current_view": "day",
+            "day_from": None,
+            "day_to": None,
+        },
+    )
+
+
+@router.get("/reports/loom", response_class=HTMLResponse)
+def reports_loom_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "reports_daily.html",
+        {
+            "title": "TMS - Coleta por Tear",
+            "version": __version__,
+            "current_view": "loom",
+            "day_from": None,
+            "day_to": None,
+        },
+    )
+
+
+@router.get("/reports/style", response_class=HTMLResponse)
+def reports_style_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "reports_daily.html",
+        {
+            "title": "TMS - Coleta por Artigo",
+            "version": __version__,
+            "current_view": "style",
+            "day_from": None,
+            "day_to": None,
+        },
+    )
+
+
 @router.get("/telas", response_class=HTMLResponse)
 def telas_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     return templates.TemplateResponse(
@@ -320,11 +243,27 @@ def config_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse
     )
 
 
+@router.get("/config/teares", response_class=HTMLResponse)
+def config_teares_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    """Página para configurar quais teares são duplos."""
+    from tms.models.masters import Machine
+    machines = db.execute(select(Machine).order_by(Machine.mac_name)).scalars().all()
+    return templates.TemplateResponse(
+        request,
+        "config_teares.html",
+        {
+            "title": "TMS - Configurar Teares Duplos",
+            "version": __version__,
+            "machines": machines,
+        },
+    )
+
+
 @router.get("/monitor", response_class=HTMLResponse)
 def monitor_page_html(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
-        "monitor_fixed.html",
+        "monitor.html",
         {
             "title": "TMS - Monitor",
             "version": __version__,

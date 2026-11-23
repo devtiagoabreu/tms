@@ -5,11 +5,12 @@
   <p class="page-sub">Consulta unificada dos endpoints <code>/api/screens/*</code>.</p>
 </div>
 
-<div class="card">
-  <div class="card-head">
-    <h2 class="card-title">Filtros</h2>
+<div class="card-pdm">
+  <div class="card-pdm-header">
+    <h2 class="card-pdm-title">Filtros</h2>
   </div>
-  <form id="screenForm" class="form-row">
+  <div class="card-pdm-content">
+    <form id="screenForm" class="form-row">
     <div class="field">
       <label for="screen">Screen</label>
       <select id="screen" name="screen">
@@ -80,25 +81,26 @@
     <div class="field">
       <label>&nbsp;</label>
       <div class="row">
-        <button class="btn btn-primary" type="submit">Buscar</button>
-        <button class="btn" type="button" id="csvBtn">CSV</button>
+        <button class="btn-pdm btn-pdm-default" type="submit">Buscar</button>
+        <button class="btn-pdm btn-pdm-outline" type="button" id="csvBtn">CSV</button>
       </div>
     </div>
   </form>
-</div>
-
-<div class="card">
-  <div class="card-head">
-    <div>
-      <h2 class="card-title">Resposta</h2>
-      <p class="muted" style="margin:4px 0 0;font-size:0.8125rem">JSON retornado pela API</p>
     </div>
-    <div class="status-line" id="status" style="margin:0"></div>
   </div>
-  <div class="card-body">
-    <pre id="out">Execute uma busca para ver o resultado.</pre>
+
+  <div class="card-pdm">
+    <div class="card-pdm-header">
+      <div>
+        <h2 class="card-pdm-title">Resposta</h2>
+        <p class="card-pdm-description" style="margin:4px 0 0;font-size:0.8125rem">JSON retornado pela API</p>
+      </div>
+      <div class="status-line" id="status" style="margin:0"></div>
+    </div>
+    <div class="card-pdm-content">
+      <pre id="out">Execute uma busca para ver o resultado.</pre>
+    </div>
   </div>
-</div>
 
 <script type="module">
   import { qs, fetchJSON, setStatus } from '/static/js/tms.js';

@@ -172,7 +172,8 @@ function initShell() {
   function setGroupExpanded(group, expanded, persist) {
     group.classList.toggle('collapsed', !expanded);
     if (persist) {
-      groupState[group.dataset.navGroup] = expanded;
+      const key = group.dataset.navGroup;
+      groupState[key] = expanded;
       persistGroupState();
     }
     syncGroupAria();
@@ -209,6 +210,7 @@ function initShell() {
         return;
       }
 
+      // Drilldown: clicar no grupo expande/colapsa os submenus.
       setGroupExpanded(group, group.classList.contains('collapsed'), true);
     });
   });

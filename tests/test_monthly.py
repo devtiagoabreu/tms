@@ -46,7 +46,7 @@ def test_month_summary_soma_metras_e_pontos(db):
 
     result = monthly.month_summary(db, start, end, allow_legacy=False)
 
-    assert result["points"] == 12.5
+    assert result["points"] == 125.0
     assert result["meters"] == 11.5
     assert result["days"] == 2
     assert result["source"] == "daily"

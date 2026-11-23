@@ -5,6 +5,9 @@ ao início da coleta, o legado deixou exports em ``C:\\TMSDATA\\<yyyy>-<mm>\\dai
 com uma linha por tear/turno; nesses arquivos a coluna 5 é a produção de pick
 (pontos) e a coluna 10 é a produção em metros, já na mesma escala usada pelo
 restante do TMS.
+
+Tears duplos (``machines.is_double``) produzem o dobro de metros e pontos,
+então ``metros_reais`` e ``pontos_reais`` levam esse multiplicador em conta.
 """
 
 from __future__ import annotations
@@ -14,10 +17,11 @@ import os
 from datetime import date, timedelta
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from tms.models.daily import DailyLoomData
+from tms.models.masters import Machine
 
 LEGACY_ROOT = Path(os.getenv("TMS_LEGACY_EXPORT_DIR", r"C:\TMSDATA"))
 
@@ -88,25 +92,53 @@ def month_summary(
     *,
     allow_legacy: bool = True,
 ) -> dict:
-    """Soma metros/pontos do intervalo; usa o export legado como fallback."""
+    """Soma metros_reais e pontos_reais do intervalo.
+
+    ``metros_reais`` = ``meters`` × (2 se tear duplo, senão 1)
+    ``pontos_reais`` = (``picks`` × 10) × (2 se tear duplo, senão 1)
+
+    Usa o export legado como fallback quando não houver dados diários.
+    """
     rows = list(
         db.execute(
-            select(DailyLoomData).where(
+            select(
+                DailyLoomData,
+                Machine.is_double,
+            )
+            .outerjoin(Machine, Machine.mac_name == DailyLoomData.mac_name)
+            .where(
                 DailyLoomData.collection_date >= start,
                 DailyLoomData.collection_date <= end,
             )
-        ).scalars()
+        ).all()
     )
-    has_values = any(r.meters is not None or r.picks is not None for r in rows)
+    has_values = any(
+        r.DailyLoomData.meters is not None
+        or r.DailyLoomData.picks is not None
+        or r.DailyLoomData.pontos_reais is not None
+        for r in rows
+    )
     if rows and has_values:
-        meters = sum(r.meters for r in rows if r.meters is not None)
-        points = sum(r.picks for r in rows if r.picks is not None)
+        meters_reais_total = 0.0
+        pontos_reais_total = 0.0
+        for row in rows:
+            r = row.DailyLoomData
+            is_double = bool(row.is_double) if row.is_double is not None else False
+            multiplicador = 2.0 if is_double else 1.0
+
+            if r.meters is not None:
+                meters_reais_total += float(r.meters) * multiplicador
+            if r.pontos_reais is not None:
+                pontos_reais_total += float(r.pontos_reais) * multiplicador
+            elif r.picks is not None:
+                pontos_reais_total += float(r.picks) * 10 * multiplicador
+
         return {
             "start": start,
             "end": end,
-            "meters": round(meters, 1),
-            "points": round(points, 1),
-            "days": len({r.collection_date for r in rows}),
+            "meters": round(meters_reais_total, 1),
+            "points": round(pontos_reais_total, 1),
+            "days": len({r.DailyLoomData.collection_date for r in rows}),
             "source": "daily",
         }
 

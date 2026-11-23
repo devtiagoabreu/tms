@@ -20,6 +20,7 @@ import socket
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
@@ -130,6 +131,58 @@ def fetch_monitor_data(
     if body.startswith(_NOT_SUPPORTED_PREFIXES):
         return MonitorData(error=live_mod.NOT_SUPPORT)
     return MonitorData(text=body)
+
+
+# ---------------------------------------------------------------------------
+# Envio de comandos para os teares (escrita)
+# ---------------------------------------------------------------------------
+
+# Mapeamento de tipos de comando para caminhos CGI do legado.
+_COMMAND_CGI_PATHS = {
+    "set_style": "/cgi-bin/ext.cgi?func=set_style",
+    "set_shift": "/cgi-bin/ext.cgi?func=set_shift",
+    "reset_counter": "/cgi-bin/ext.cgi?func=reset_counter",
+    "set_clock": "/cgi-bin/ext.cgi?func=set_clock",
+    "set_speed": "/cgi-bin/ext.cgi?func=set_speed",
+    "set_tension": "/cgi-bin/ext.cgi?func=set_tension",
+    "set_article": "/cgi-bin/ext.cgi?func=set_article",
+    "clear_error": "/cgi-bin/ext.cgi?func=clear_error",
+    "start_production": "/cgi-bin/ext.cgi?func=start_production",
+    "stop_production": "/cgi-bin/ext.cgi?func=stop_production",
+}
+
+
+def send_command_to_loom(
+    host: str,
+    command_type: str,
+    payload: str | None = None,
+    *,
+    scheme: str = "http",
+    timeout: float = 5.0,
+) -> tuple[bool, str | None]:
+    """Envia um comando para o tear via HTTP.
+
+    Devolve ``(sucesso, mensagem_erro)``.  Nunca levanta exceção.
+    """
+    path = _COMMAND_CGI_PATHS.get(command_type, "/cgi-bin/ext.cgi?func=command")
+    url = _url(host, path, scheme)
+
+    # Monta query string com o payload, se houver.
+    if payload:
+        separator = "&" if "?" in url else "?"
+        url = f"{url}{separator}payload={urllib.parse.quote(payload)}"
+
+    try:
+        req = urllib.request.Request(url, method="POST", data=b"")
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            body = _decode(response.read())
+            if body.startswith(_NOT_SUPPORTED_PREFIXES):
+                return False, "Comando não suportado pelo tear"
+            return True, None
+    except BaseException as exc:  # noqa: BLE001 - vira erro, nunca propaga
+        if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+            raise
+        return False, f"Erro de comunicação: {_error_code(exc)}"
 
 
 def _scan_filename(mac_id: str) -> Optional[str]:

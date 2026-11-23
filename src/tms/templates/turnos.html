@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .days { display: flex; flex-wrap: wrap; gap: 6px; }
+  .days-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 8px; }
+  .day-chip { display: inline-block; font-size: 0.75rem; padding: 3px 8px; border-radius: 6px; background: hsl(var(--secondary)); color: hsl(var(--muted-foreground)); border: 1px solid hsl(var(--border)); cursor: pointer; }
+  .day-chip.on { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
+</style>
+
+<div class="page-head">
+  <h1 class="page-title">Cadastro de Turnos</h1>
+  <p class="page-sub">Gerencie turnos de produção, horários, dias da semana e eficiência média.</p>
+</div>
+
+<div id="msg" style="margin-bottom:1rem"></div>
+
+<div class="card-pdm">
+  <div class="card-pdm-header">
+    <div>
+      <h2 class="card-pdm-title">Turnos cadastrados</h2>
+      <p class="card-pdm-description">Turnos configurados para o monitoramento da produção.</p>
+    </div>
+    <div class="row" style="gap:0.5rem">
+      <button class="btn-pdm btn-pdm-outline" onclick="openForm()">+ Novo turno</button>
+      <a class="btn-pdm btn-pdm-outline" href="/monitor">Voltar ao Monitor</a>
+      <span class="badge-pdm badge-pdm-outline" id="count-badge">0 turnos</span>
+    </div>
+  </div>
+  <div class="card-pdm-content">
+    <table class="table-pdm">
+      <thead>
+        <tr>
+          <th style="width:6%">#</th>
+          <th style="width:14%">Turno</th>
+          <th style="width:16%">Horário</th>
+          <th style="width:26%">Dias da semana</th>
+          <th style="width:10%">Ativo</th>
+          <th style="width:10%">Meia-noite</th>
+          <th style="width:12%">Eficiência média</th>
+          <th style="width:18%">Ações</th>
+        </tr>
+      </thead>
+      <tbody id="turns-table-body">
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card-pdm" id="form-card" style="display:none;">
+  <div class="card-pdm-header">
+    <h2 class="card-pdm-title">Cadastro / Edição de Turno</h2>
+  </div>
+  <div class="card-pdm-content">
+    <form id="turn-form" onsubmit="saveTurn(event)">
+      <input type="hidden" id="turn-id">
+      <div class="form-row">
+        <div class="field" style="flex:1 1 160px">
+          <label>Nome (A, B, C...)</label>
+          <input type="text" id="turn-name" class="input-pdm" maxlength="8" placeholder="A">
+        </div>
+        <div class="field" style="flex:1 1 140px">
+          <label>Início</label>
+          <input type="time" id="turn-start" class="input-pdm">
+        </div>
+        <div class="field" style="flex:1 1 140px">
+          <label>Término</label>
+          <input type="time" id="turn-end" class="input-pdm">
+        </div>
+        <div class="field" style="flex:1 1 320px; align-self:flex-end; flex-direction:row; align-items:center; gap:1rem">
+          <label style="margin:0; font-size:0.875rem; font-weight:500; color:hsl(var(--foreground))"><input type="checkbox" id="turn-active" checked> Ativo</label>
+          <label style="margin:0; font-size:0.875rem; font-weight:500; color:hsl(var(--foreground))"><input type="checkbox" id="turn-wrap"> Atravessa meia-noite</label>
+        </div>
+        <div class="field" style="flex:1 1 100%">
+          <label>Dias da semana</label>
+          <div class="days-grid" id="days-grid">
+          </div>
+        </div>
+        <div class="field" style="flex:1 1 100%">
+          <div class="row" style="gap:0.5rem; margin-top:8px">
+            <button type="submit" class="btn-pdm btn-pdm-outline">Salvar</button>
+            <button type="button" class="btn-pdm btn-pdm-outline" onclick="closeForm()">Cancelar</button>
+            <button type="button" id="btn-delete" class="btn-pdm btn-pdm-destructive btn-pdm-sm" onclick="deleteTurn()" style="margin-left:auto;display:none;">Excluir</button>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const days = [
+  {key:'domingo', label:'Domingo', bit:1},
+  {key:'segunda', label:'Segunda', bit:2},
+  {key:'terca', label:'Terça', bit:4},
+  {key:'quarta', label:'Quarta', bit:8},
+  {key:'quinta', label:'Quinta', bit:16},
+  {key:'sexta', label:'Sexta', bit:32},
+  {key:'snado', label:'Sábado', bit:64},
+];
+
+let editingId = null;
+
+function showMsg(text, type='ok') {
+  const el = document.getElementById('msg');
+  el.innerHTML = `<span class="badge-pdm badge-pdm-${type === 'err' ? 'danger' : 'success'}">${text}</span>`;
+  setTimeout(() => { el.innerHTML = ''; }, 5000);
+}
+
+async function loadTurns() {
+  const [tRes, eRes] = await Promise.all([
+    fetch('/api/shift-turns'),
+    fetch('/api/shift-turns/eficiencia'),
+  ]);
+  const turns = await tRes.json();
+  const eficiencia = await eRes.json();
+  const efById = {};
+  eficiencia.forEach(e => { efById[e.id] = e; });
+
+  const body = document.getElementById('turns-table-body');
+  body.innerHTML = '';
+  document.getElementById('count-badge').textContent = turns.length + ' turno(s)';
+  turns.forEach(t => {
+    const e = efById[t.id] || {};
+    const activeChip = t.active ? '<span class="badge-pdm badge-pdm-success">Ativo</span>' : '<span class="badge-pdm badge-pdm-outline">Inativo</span>';
+    const wrapChip = t.wraps_midnight ? '<span class="badge-pdm badge-pdm-warning" style="margin-left:6px">Meia-noite</span>' : '';
+    const eff = e.avg_efficiency != null ? e.avg_efficiency.toFixed(1) + '%' : '–';
+    const daysHtml = days.map(d => {
+      const on = (t.days_mask & d.bit) ? 'on' : '';
+      return `<span class="badge-pdm badge-pdm-${on ? 'success' : 'outline'}" title="${d.label}">${d.label.substring(0,3)}</span>`;
+    }).join('');
+    const horario = `${t.start_time} - ${t.end_time}`;
+    body.innerHTML += `
+      <tr>
+        <td>${t.sort_order}</td>
+        <td><b>${t.name}</b></td>
+        <td>${horario}</td>
+        <td><div class="days">${daysHtml}</div></td>
+        <td>${activeChip}</td>
+        <td>${wrapChip}</td>
+        <td>${eff}</td>
+        <td>
+          <button class="btn-pdm btn-pdm-outline btn-pdm-sm" onclick="editTurn(${t.id})">Editar</button>
+          <button class="btn-pdm btn-pdm-${t.active ? 'outline' : 'default'} btn-pdm-sm" onclick="toggleActive(${t.id}, ${t.active})">${t.active ? 'Desligar' : 'Ligar'}</button>
+        </td>
+      </tr>
+    `;
+  });
+}
+
+async function toggleActive(id, current) {
+  try {
+    await fetch('/api/shift-turns/' + id, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({active: !current})
+    });
+    showMsg(current ? 'Turno desligado' : 'Turno ligado');
+    loadTurns();
+  } catch (e) {
+    showMsg('Erro ao alterar status', 'err');
+  }
+}
+
+async function deleteTurn() {
+  if (!editingId) return;
+  if (!confirm('Excluir este turno?')) return;
+  try {
+    await fetch('/api/shift-turns/' + editingId, {method: 'DELETE'});
+    showMsg('Turno excluído');
+    closeForm();
+    loadTurns();
+  } catch (e) {
+    showMsg('Erro ao excluir', 'err');
+  }
+}
+
+function openForm() {
+  editingId = null;
+  document.getElementById('turn-form').reset();
+  document.getElementById('turn-id').value = '';
+  document.getElementById('turn-active').checked = true;
+  document.getElementById('turn-wrap').checked = false;
+  document.getElementById('btn-delete').style.display = 'none';
+  setAllDays(false);
+  document.getElementById('form-card').style.display = 'block';
+}
+
+function closeForm() {
+  editingId = null;
+  document.getElementById('form-card').style.display = 'none';
+}
+
+async function editTurn(id) {
+  const res = await fetch('/api/shift-turns/' + id);
+  const t = await res.json();
+  editingId = t.id;
+  document.getElementById('turn-id').value = t.id;
+  document.getElementById('turn-name').value = t.name;
+  document.getElementById('turn-start').value = t.start_time;
+  document.getElementById('turn-end').value = t.end_time;
+  document.getElementById('turn-active').checked = t.active;
+  document.getElementById('turn-wrap').checked = t.wraps_midnight;
+  setDaysFromMask(t.days_mask);
+  document.getElementById('btn-delete').style.display = 'inline-block';
+  document.getElementById('form-card').style.display = 'block';
+}
+
+function setAllDays(on) {
+  days.forEach(d => {
+    const el = document.querySelector(`[data-day="${d.key}"]`);
+    if (el) el.className = 'day-chip ' + (on ? 'on' : '');
+  });
+}
+
+function setDaysFromMask(mask) {
+  setAllDays(false);
+  days.forEach(d => {
+    if (mask & d.bit) {
+      const el = document.querySelector(`[data-day="${d.key}"]`);
+      if (el) el.className = 'day-chip on';
+    }
+  });
+}
+
+function getSelectedDaysMask() {
+  let mask = 0;
+  days.forEach(d => {
+    const el = document.querySelector(`[data-day="${d.key}"]`);
+    if (el && el.classList.contains('on')) mask |= d.bit;
+  });
+  return mask;
+}
+
+document.getElementById('days-grid').innerHTML = days.map(d =>
+  `<span class="day-chip" data-day="${d.key}" onclick="toggleDayChip(this)" title="${d.label}">${d.label.substring(0,3)}</span>`
+).join('');
+
+function toggleDayChip(el) {
+  el.classList.toggle('on');
+}
+
+async function saveTurn(ev) {
+  ev.preventDefault();
+  const id = document.getElementById('turn-id').value;
+  const payload = {
+    name: document.getElementById('turn-name').value,
+    start_time: document.getElementById('turn-start').value,
+    end_time: document.getElementById('turn-end').value,
+    active: document.getElementById('turn-active').checked,
+    wraps_midnight: document.getElementById('turn-wrap').checked,
+    days: days.filter(d => {
+      const el = document.querySelector(`[data-day="${d.key}"]`);
+      return el && el.classList.contains('on');
+    }).map(d => d.key),
+  };
+  if (!payload.name || !payload.start_time || !payload.end_time) {
+    showMsg('Preencha nome, início e término', 'err');
+    return;
+  }
+  try {
+    const method = id ? 'PUT' : 'POST';
+    const url = id ? '/api/shift-turns/' + id : '/api/shift-turns';
+    await fetch(url, {
+      method: method,
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    showMsg(id ? 'Turno atualizado' : 'Turno criado');
+    closeForm();
+    loadTurns();
+  } catch (e) {
+    showMsg('Erro ao salvar', 'err');
+  }
+}
+
+loadTurns();
+</script>
+{% endblock %}

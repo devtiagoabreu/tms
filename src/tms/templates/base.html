@@ -4,6 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title or 'TMS' }}</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
   <script>
     try {
       if (localStorage.getItem('tms-sidebar-collapsed') === '1') {
@@ -11,8 +15,15 @@
       }
     } catch (e) { /* localStorage indisponível */ }
   </script>
-  <link rel="stylesheet" href="/static/css/style.css">
-  <script>try{var t=localStorage.getItem('tms-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+  <script>
+    try {
+      var t = localStorage.getItem('tms-theme');
+      if (t) {
+        document.documentElement.dataset.theme = t;
+        document.documentElement.classList.toggle('dark', t === 'dark');
+      }
+    } catch (e) { /* localStorage indisponível */ }
+  </script>
 </head>
 <body>
 {% macro nav_icon(name) -%}
@@ -69,12 +80,18 @@
   <circle cx="6" cy="4" r="1.4"/><circle cx="10" cy="8" r="1.4"/><circle cx="5" cy="12" r="1.4"/>
   {%- elif name == 'code' -%}
   <path d="M5.5 4 2 8l3.5 4M10.5 4 14 8l-3.5 4"/>
+  {%- elif name == 'calendar' -%}
+  <rect x="3" y="4" width="10" height="11" rx="1" ry="1"/>
+  <path d="M8 2v.5M3 7h1M8 7h1M13 7h1M3 10h1M8 10h1M13 10h1M3 13h1M8 13h1M13 13h1"/>
   {%- else -%}
   <circle cx="8" cy="8" r="5"/>
   {%- endif -%}
 </svg>
 {%- endmacro %}
+
+<!-- ===== App shell (PDM / dgbcomex) ===== -->
 <div class="shell">
+  <!-- Topbar fixa -->
   <header class="topbar">
     <div class="topbar-inner">
       <button class="icon-btn sidebar-toggle" id="navToggle" type="button"
@@ -114,25 +131,28 @@
   <div class="layout">
     <aside class="sidebar" id="sidebar">
       {% set path = request.url.path if request else '/' %}
+      {% set user_menus = request.state.user_menus if request and request.state.user_menus is not none else [] %}
       <nav aria-label="Navegação principal">
-        {% for group in nav %}
+        {% for group in user_menus %}
         {% set ns = namespace(active=false) %}
         {% for item in group['items'] %}
-        {% if path in item['match'] %}{% set ns.active = true %}{% endif %}
+        {% if path == item['href'] or path.startswith(item['href'] + '/') %}{% set ns.active = true %}{% endif %}
         {% endfor %}
-        <div class="nav-group{% if ns.active %} is-active{% endif %}" data-nav-group="{{ loop.index }}">
-          <button class="nav-label nav-group-toggle" type="button" aria-expanded="true"
-                  aria-controls="nav-group-{{ loop.index }}" title="{{ group.label }}">
+        <div class="nav-group{% if ns.active %} is-active{% endif %}" data-nav-group="{{ group.id }}">
+          <button class="nav-label nav-group-toggle" type=" button" aria-expanded="false"
+                  aria-controls="nav-group-{{ group.id }}" title="{{ group.label }}">
             <span class="nav-group-icon">{{ nav_icon(group['icon']) }}</span>
             <span class="nav-group-label">{{ group.label }}</span>
+            {% if group['items'] | length > 0 %}
             <svg class="nav-chevron" width="12" height="12" viewBox="0 0 16 16" fill="none"
                  stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="m4 6 4 4 4-4"/>
             </svg>
+            {% endif %}
           </button>
-          <div class="nav-items" id="nav-group-{{ loop.index }}" data-label="{{ group.label }}">
+          <div class="nav-items drilldown" id="nav-group-{{ group.id }}" data-label="{{ group.label }}">
             {% for item in group['items'] %}
-            {% set is_active = path in item['match'] %}
+            {% set is_active = path == item['href'] or path.startswith(item['href'] + '/') %}
             <a class="nav-item {% if is_active %}active{% endif %}"
                href="{{ item.href }}"
                title="{{ item.label }}"
@@ -140,22 +160,21 @@
                {% if item.href == '/docs' %}target="_blank" rel="noopener"{% endif %}>
               <span class="nav-icon-wrap">{{ nav_icon(item['icon']) }}</span>
               <span class="nav-text">{{ item.label }}</span>
-              <span class="nav-tip" role="tooltip">
-                <span class="nav-tip-desc">{{ item.desc }}</span>
-                <span class="nav-tip-row">
-                  <span class="nav-tip-key">Menu legado</span>
-                  <span class="nav-tip-val">{{ item.legacy }}</span>
-                </span>
-                {% if item.legacy_path and item.legacy_path != '—' %}
-                <span class="nav-tip-path">{{ item.legacy_path }}</span>
-                {% endif %}
-              </span>
             </a>
             {% endfor %}
           </div>
         </div>
         {% endfor %}
       </nav>
+      {% if current_user and current_user.role == 'admin' %}
+      <div class="nav-group admin-config" style="margin-top: auto; padding: 12px;">
+        <button class="nav-label nav-group-toggle" type="button" onclick="location.href='/menus'"
+                title="Configurar Menus">
+          <span class="nav-group-icon">{{ nav_icon('settings') }}</span>
+          <span class="nav-group-label">Configurar Menus</span>
+        </button>
+      </div>
+      {% endif %}
     </aside>
     <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 

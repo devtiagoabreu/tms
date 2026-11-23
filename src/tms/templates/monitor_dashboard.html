@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div class="row" style="justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap">
+    <div>
+      <h1 class="page-title">Monitor de teares</h1>
+      <p class="page-sub">
+        Estado atual de cada tear (refresh automático a cada 30s) &mdash;
+        <code>GET /api/monitor</code>
+      </p>
+    </div>
+    <div class="row" style="align-items:center;gap:0.5rem">
+      <label class="muted" for="filtro-grupo" style="font-size:0.75rem">Grupo:</label>
+      <select id="filtro-grupo" class="select-pdm" onchange="filtrarPorGrupo()" style="width:auto">
+        <option value="">Todos</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="kpi-grid">
+  <div class="kpi kpi-accent">
+    <span class="kpi-label">Coletor</span>
+    <span class="kpi-value" id="k-collector">-</span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-label">Última coleta</span>
+    <span class="kpi-value" id="k-last" style="font-size:0.8125rem;font-weight:550">-</span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-label">Próxima coleta</span>
+    <span class="kpi-value" id="k-next" style="font-size:0.8125rem;font-weight:550">-</span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-label">Teares no parque</span>
+    <span class="kpi-value" id="k-total">-</span>
+  </div>
+  <div class="kpi kpi-ok">
+    <span class="kpi-label">Em operação</span>
+    <span class="kpi-value" id="k-run">-</span>
+  </div>
+  <div class="kpi kpi-warn">
+    <span class="kpi-label">Paradas</span>
+    <span class="kpi-value" id="k-stop">-</span>
+  </div>
+  <div class="kpi kpi-bad">
+    <span class="kpi-label">Sem comunicação</span>
+    <span class="kpi-value" id="k-off">-</span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-label">Eficiência média</span>
+    <span class="kpi-value" id="k-eff">-</span><span class="kpi-value" style="font-size:0.8125rem;font-weight:550">%</span>
+  </div>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<!-- Eficiencia por Grupo e Operador -->
+<div class="card-pdm" style="margin-top:1.25rem">
+  <div class="card-pdm-header">
+    <h2 class="card-pdm-title">Eficiência por Grupo</h2>
+  </div>
+  <div class="card-pdm-content" style="overflow-x:auto">
+    <table class="table-pdm">
+      <thead>
+        <tr>
+          <th>Grupo</th>
+          <th>Teares</th>
+          <th>Coletas</th>
+          <th>Eficiência Média</th>
+          <th>RPM Médio</th>
+          <th>Produção</th>
+          <th>Paradas</th>
+        </tr>
+      </thead>
+      <tbody id="eff-grupo-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card-pdm" style="margin-top:1rem">
+  <div class="card-pdm-header">
+    <h2 class="card-pdm-title">Eficiência por Operador</h2>
+  </div>
+  <div class="card-pdm-content" style="overflow-x:auto">
+    <table class="table-pdm">
+      <thead>
+        <tr>
+          <th>Operador</th>
+          <th>Cargo</th>
+          <th>Grupo</th>
+          <th>Eficiência Média</th>
+          <th>RPM Médio</th>
+          <th>Produção</th>
+        </tr>
+      </thead>
+      <tbody id="eff-operador-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<p class="muted" style="font-size:0.75rem;text-align:right;margin-top:1rem">Atualizado <span id="ts">-</span> &middot; recarrega a cada 30s</p>
+
+<script>
+{% raw %}
+const grid = document.getElementById('grid');
+let allMonitorData = [];
+let grupos = [];
+
+function card(m) {
+  const eff = m.efficiency == null ? '-' : m.efficiency.toFixed(1);
+  const prod = m.production == null ? '-' : m.production;
+  const rpm = m.rpm == null ? '-' : m.rpm;
+  const stop = m.stop ? `<div class="row" style="justify-content:flex-start;margin-top:8px;font-size:0.75rem;color:hsl(var(--tms-danger))">${m.stop.cause} (${m.stop.duration_min ?? '?'} min)</div>` : '';
+  const bar = m.efficiency == null ? '' : `<div style="height:6px;border-radius:3px;background:hsl(var(--muted));margin-top:8px;overflow:hidden"><span style="display:block;height:100%;background:hsl(var(--tms-success));width:${Math.min(100, m.efficiency)}%"></span></div>`;
+  const live = m.live ? `<div class="row" style="justify-content:space-between;font-size:0.75rem"><span>${m.live.status}</span><span>24h ${m.live.efficiency_24h ?? '-'}%</span></div>` : '';
+  return `<div class="card-pdm" style="border-left:4px solid ${m.color}">
+    <div class="card-pdm-header" style="border-bottom:none;padding:1rem 1rem 0.75rem">
+      <span class="mac" style="font-size:1.125rem;font-weight:700">${m.mac_name}</span>
+      <span class="badge-pdm state" style="color:${m.color};font-size:0.6875rem;text-transform:uppercase;letter-spacing:.5px">${m.state_label}</span>
+    </div>
+    <div class="card-pdm-content" style="padding-top:0">
+      <div class="row" style="justify-content:space-between;gap:0.5rem;font-size:0.75rem;color:hsl(var(--muted-foreground));margin-top:4px"><span>${m.mac_type} ${m.style || ''}</span><span>visto há ${m.age_min ?? '?'} min</span></div>
+      <div class="row" style="justify-content:space-between;gap:0.5rem;font-size:0.75rem;margin-top:4px"><span>Produção ${prod}</span><span>RPM ${rpm}</span></div>
+      <div class="row" style="justify-content:space-between;gap:0.5rem;font-size:0.75rem;margin-top:4px"><span>Eficiência ${eff}%</span><span>${m.shift_id || ''}</span></div>
+      ${live}${bar}${stop}
+    </div>
+  </div>`;
+}
+
+async function carregarGrupos() {
+  try {
+    const res = await fetch('/api/cadastros/grupos?active_only=false');
+    if (res.status === 401) return;
+    grupos = await res.json();
+    const sel = document.getElementById('filtro-grupo');
+    grupos.forEach(g => {
+      sel.innerHTML += `<option value="${g.id}">${g.name}</option>`;
+    });
+    carregarEficienciaGrupos();
+  } catch (e) {
+    // ignora
+  }
+}
+
+async function carregarEficienciaGrupos() {
+  try {
+    const body = document.getElementById('eff-grupo-body');
+    body.innerHTML = '<tr><td colspan="7" class="empty">Carregando...</td></tr>';
+    for (const g of grupos) {
+      const res = await fetch(`/api/cadastros/grupos/${g.id}/eficiencia`);
+      if (res.status === 401) return;
+      const data = await res.json();
+      const eff = data.avg_efficiency != null ? data.avg_efficiency.toFixed(1) : '–';
+      const rpm = data.avg_rpm != null ? data.avg_rpm.toFixed(1) : '–';
+      const prod = data.total_production != null ? data.total_production.toFixed(0) : '–';
+      body.innerHTML += `
+        <tr>
+          <td><b>${g.name}</b></td>
+          <td>${data.total_teares}</td>
+          <td>${data.coletas}</td>
+          <td>${eff}%</td>
+          <td>${rpm}</td>
+          <td>${prod}</td>
+          <td>${data.total_stops}</td>
+        </tr>
+      `;
+    }
+  } catch (e) {
+    // ignora
+  }
+}
+
+async function carregarEficienciaOperadores() {
+  try {
+    const res = await fetch('/api/cadastros/operadores?active_only=false');
+    if (res.status === 401) return;
+    const operadores = await res.json();
+    const body = document.getElementById('eff-operador-body');
+    body.innerHTML = '';
+    if (!operadores || operadores.length === 0) {
+      body.innerHTML = '<tr><td colspan="6" class="empty">Nenhum operador cadastrado.</td></tr>';
+      return;
+    }
+    for (const o of operadores) {
+      if (!o.group_id) continue; // so operadores com grupo vinculado
+      const res = await fetch(`/api/cadastros/operadores/${o.id}/eficiencia`);
+      if (res.status === 401) return;
+      const data = await res.json();
+      if (data.total_teares === 0) continue;
+      const eff = data.avg_efficiency != null ? data.avg_efficiency.toFixed(1) : '–';
+      const rpm = data.avg_rpm != null ? data.avg_rpm.toFixed(1) : '–';
+      const prod = data.total_production != null ? data.total_production.toFixed(0) : '–';
+      const roleChip = `<span class="badge-pdm ${o.role === 'tecelao' ? 'badge-pdm-success' : 'badge-pdm-default'}">${o.role}</span>`;
+      body.innerHTML += `
+        <tr>
+          <td><b>${o.name}</b> (${o.code})</td>
+          <td>${roleChip}</td>
+          <td>${o.group_name || '–'}</td>
+          <td>${eff}%</td>
+          <td>${rpm}</td>
+          <td>${prod}</td>
+        </tr>
+      `;
+    }
+  } catch (e) {
+    // ignora
+  }
+}
+
+function filtrarPorGrupo() {
+  const gid = document.getElementById('filtro-grupo').value;
+  let data = allMonitorData;
+  if (gid) {
+    // Filtrar por grupo: precisamos saber quais teares pertencem ao grupo
+    // Buscar membros do grupo
+    fetch('/api/cadastros/grupos/' + gid + '/membros')
+      .then(res => res.json())
+      .then(membros => {
+        const macNames = membros.map(m => m.mac_name);
+        const filtrado = data.filter(m => macNames.includes(m.mac_name));
+        renderGrid(filtrado);
+      });
+  } else {
+    renderGrid(data);
+  }
+}
+
+function renderGrid(data) {
+  grid.innerHTML = data.map(card).join('');
+  const run = data.filter(m => m.state === 'run').length;
+  const off = data.filter(m => m.state === 'offline' || m.state === 'no_data').length;
+  const stopped = data.filter(m => m.state === 'stopped').length;
+  const effs = data.map(m => m.efficiency).filter(v => v != null);
+  document.getElementById('k-run').textContent = run;
+  document.getElementById('k-total').textContent = data.length;
+  document.getElementById('k-stop').textContent = stopped;
+  document.getElementById('k-off').textContent = off;
+  document.getElementById('k-eff').textContent = effs.length ? (effs.reduce((a, b) => a + b, 0) / effs.length).toFixed(1) : '-';
+}
+
+async function refresh() {
+  const res = await fetch('/api/monitor');
+  const data = await res.json();
+  allMonitorData = data;
+  filtrarPorGrupo();
+  document.getElementById('ts').textContent = new Date().toLocaleTimeString();
+}
+
+async function refreshCollector() {
+  try {
+    const res = await fetch('/api/collector/status');
+    const c = await res.json();
+    const el = document.getElementById('k-collector');
+    el.textContent = c.enabled ? 'LIGADO' : 'DESLIGADO';
+    el.style.color = c.enabled ? '#4CAF50' : '#ff8a80';
+    document.getElementById('k-last').textContent = c.last_collected_at ? new Date(c.last_collected_at).toLocaleString() : '-';
+    document.getElementById('k-next').textContent = c.next_collect_at ? new Date(c.next_collect_at).toLocaleString() : '-';
+  } catch (e) {
+    // ignora falha na leitura do coletor
+  }
+}
+
+refresh();
+refreshCollector();
+carregarGrupos();
+carregarEficienciaOperadores();
+setInterval(refresh, 30000);
+setInterval(refreshCollector, 30000);
+setInterval(carregarEficienciaGrupos, 60000);
+setInterval(carregarEficienciaOperadores, 60000);
+{% endraw %}
+</script>
+{% endblock %}

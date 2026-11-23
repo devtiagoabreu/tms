@@ -84,11 +84,16 @@ class DailyLoomData(Base):
     mac_name: Mapped[str] = mapped_column(String(32), index=True)
     source: Mapped[str] = mapped_column(String(16), default="live")  # agg_shift|daily_raw|history|live
     shift_id: Mapped[str | None] = mapped_column(String(32), index=True)
+    shift_turn_id: Mapped[int | None] = mapped_column(
+        ForeignKey("shift_turns.id"), nullable=True, index=True
+    )
     style: Mapped[str | None] = mapped_column(String(64))
     beam: Mapped[str | None] = mapped_column(String(32))
     production: Mapped[float | None] = mapped_column(Float)
     picks: Mapped[float | None] = mapped_column(Float)
+    pontos_reais: Mapped[float | None] = mapped_column(Float, nullable=True)
     meters: Mapped[float | None] = mapped_column(Float)
+    metros_reais: Mapped[float | None] = mapped_column(Float, nullable=True)
     efficiency: Mapped[float | None] = mapped_column(Float)
     rpm: Mapped[float | None] = mapped_column(Float)
     run_time_min: Mapped[float | None] = mapped_column(Float)
@@ -105,3 +110,4 @@ class DailyLoomData(Base):
     collected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     machine = relationship("Machine")
+    shift_turn = relationship("ShiftTurn")

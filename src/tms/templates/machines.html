@@ -5,16 +5,17 @@
   <p class="page-sub">Equipamentos cadastrados e seus snapshots — <code>/api/machines</code></p>
 </div>
 
-<div class="card">
-  <div class="card-head">
-    <h2 class="card-title">Equipamentos</h2>
+<div class="card-pdm">
+  <div class="card-pdm-header">
+    <h2 class="card-pdm-title">Equipamentos</h2>
     <div class="row">
       <div class="status-line" id="status" style="margin:0"></div>
-      <button class="btn btn-primary" id="load">Carregar</button>
+      <button class="btn-pdm btn-pdm-default" id="load">Carregar</button>
     </div>
   </div>
-  <div class="table-wrap">
-    <table>
+  <div class="card-pdm-content">
+    <div class="table-wrap">
+      <table class="table-pdm">
       <thead>
         <tr>
           <th>Mac</th><th>Tipo</th><th>IP</th><th>Ativa</th><th></th>
@@ -27,14 +28,14 @@
   </div>
 </div>
 
-<div class="card">
-  <div class="card-head">
+<div class="card-pdm">
+  <div class="card-pdm-header">
     <div>
-      <h2 class="card-title">Snapshot</h2>
-      <p class="muted" style="margin:4px 0 0;font-size:0.8125rem">Detalhes do tear selecionado</p>
+      <h2 class="card-pdm-title">Snapshot</h2>
+      <p class="card-pdm-description" style="margin:4px 0 0;font-size:0.8125rem">Detalhes do tear selecionado</p>
     </div>
   </div>
-  <div class="card-body">
+  <div class="card-pdm-content">
     <pre id="snap">Nenhum snapshot selecionado.</pre>
   </div>
 </div>
@@ -67,8 +68,8 @@
         `<td>${esc(m.mac_name)}</td>`,
         `<td>${esc(m.mac_type)}</td>`,
         `<td>${esc(m.ip_addr) || '-'}</td>`,
-        `<td>${m.active ? '<span class="badge badge-success">ativa</span>' : '<span class="badge">inativa</span>'}</td>`,
-        `<td class="text-right"><button class="btn btn-sm" data-m="${esc(m.mac_name)}">ver snapshot</button></td>`,
+        `<td>${m.active ? '<span class="badge-pdm badge-pdm-success">ativa</span>' : '<span class="badge-pdm badge-pdm-outline">inativa</span>'}</td>`,
+        `<td class="text-right"><button class="btn-pdm btn-pdm-sm btn-pdm-outline" data-m="${esc(m.mac_name)}">ver snapshot</button></td>`,
       ].join('');
       tb.appendChild(tr);
     });
